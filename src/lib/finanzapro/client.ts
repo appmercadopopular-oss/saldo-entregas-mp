@@ -116,6 +116,24 @@ export async function fetchInvoiceById(
 }
 
 /**
+ * Obtiene la lista de facturas emitidas en una fecha específica.
+ *
+ * Endpoint: GET /invoicing-service/v2/invoices?invoiceDate={date}
+ */
+export async function fetchInvoicesByDate(
+  date: string
+): Promise<any[]> {
+  const response = await finanzaProFetch<any>(
+    `/invoicing-service/v2/invoices?invoiceDate=${encodeURIComponent(date)}`
+  )
+
+  if (response && response.data !== undefined) {
+    return response.data
+  }
+  return response || []
+}
+
+/**
  * Busca una factura por su referencia interna (número de factura visible).
  *
  * Endpoint: GET /invoicing-service/v2/invoices?internalReference={ref}

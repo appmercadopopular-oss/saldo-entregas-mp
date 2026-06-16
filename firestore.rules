@@ -1,0 +1,78 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Verifica si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Obtiene el documento del usuario desde la colección 'users'
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Helper: Verifica si el usuario es Administrador
+    function isAdmin() {
+      return isAuthenticated() && 
+        resource.data.role == 'admin' || 
+        getUserData().role == 'admin';
+    }
+
+    // Helper: Verifica si el usuario es Repartidor (Driver)
+    function isDriver() {
+      return isAuthenticated() && 
+        resource.data.role == 'driver' || 
+        getUserData().role == 'driver';
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Colección: USUARIOS (users)
+    // ─────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      // Cualquier usuario autenticado puede leer la información de los perfiles (para displays de nombres)
+      allow read: if isAuthenticated();
+      
+      // Solo los administradores pueden crear o modificar usuarios
+      allow write: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Colección: FACTURAS (invoices)
+    // ─────────────────────────────────────────────────────────────
+    match /invoices/{invoiceId} {
+      // Admins y repartidores pueden leer las facturas
+      allow read: if isAuthenticated();
+      
+      // Solo los admins pueden crear, actualizar o borrar facturas
+      allow write: if isAdmin();
+
+      // Subcolección: ÍTEMS DE FACTURA (items)
+      match /items/{itemId} {
+        allow read: if isAuthenticated();
+        
+        // Admins pueden escribir libremente.
+        // Repartidores pueden actualizar el saldo de ítems cuando confirman una entrega
+        allow create, delete: if isAdmin();
+        allow update: if isAdmin() || isDriver();
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Colección: ÓRDENES DE DESPACHO (delivery_orders)
+    // ─────────────────────────────────────────────────────────────
+    match /delivery_orders/{orderId} {
+      // Admins pueden leer y escribir todas las órdenes.
+      // Repartidores pueden leer y actualizar solo las órdenes que tienen asignadas.
+      allow read: if isAdmin() || (isDriver() && resource.data.assignedDriverId == request.auth.uid);
+      
+      // Solo los admins pueden crear o borrar órdenes
+      allow create, delete: if isAdmin();
+      
+      // Admins pueden actualizar cualquier orden.
+      // Repartidores pueden actualizar su orden asignada para cambiar estado o registrar confirmaciones
+      allow update: if isAdmin() || (isDriver() && resource.data.assignedDriverId == request.auth.uid);
+    }
+  }
+}

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getAllDeliveryOrders } from '@/lib/firebase/firestore'
+import { getAllDeliveryOrders, updateDeliveryOrdersPriorities } from '@/lib/firebase/firestore'
 import { DeliveryOrderDoc, OrderStatus, ORDER_STATUS_LABELS } from '@/types'
 import { formatDateTime, formatRelative } from '@/lib/utils'
-import { Truck, Search, AlertTriangle, CheckCircle2, Clock, Package, MapPin, ChevronDown, ChevronUp } from 'lucide-react'
+import { Truck, Search, AlertTriangle, CheckCircle2, Clock, Package, MapPin, ChevronDown, ChevronUp, ChevronsUp } from 'lucide-react'
+import { toast } from 'sonner'
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
   pending: 'badge-warning',
@@ -39,6 +40,53 @@ export default function DeliveryOrdersPage() {
       setLoading(false)
     })
   }, [])
+
+  const isPendingView = statusFilter === 'pending' || statusFilter === 'in_transit'
+  const canReorder = isPendingView && !search.trim() && groupBy === 'none'
+
+  const handleMoveOrder = async (orderId: string, direction: 'up' | 'down' | 'top') => {
+    const index = filtered.findIndex((o) => o.id === orderId)
+    if (index === -1) return
+
+    const newFiltered = [...filtered]
+    if (direction === 'up' && index > 0) {
+      const temp = newFiltered[index]
+      newFiltered[index] = newFiltered[index - 1]
+      newFiltered[index - 1] = temp
+    } else if (direction === 'down' && index < newFiltered.length - 1) {
+      const temp = newFiltered[index]
+      newFiltered[index] = newFiltered[index + 1]
+      newFiltered[index + 1] = temp
+    } else if (direction === 'top' && index > 0) {
+      const [item] = newFiltered.splice(index, 1)
+      newFiltered.unshift(item)
+    } else {
+      return
+    }
+
+    const updates = newFiltered.map((order, idx) => ({
+      id: order.id,
+      priority: idx + 1,
+    }))
+
+    setFiltered(newFiltered)
+    setOrders((prev) =>
+      prev.map((order) => {
+        const update = updates.find((u) => u.id === order.id)
+        return update ? { ...order, priority: update.priority } : order
+      })
+    )
+
+    try {
+      await updateDeliveryOrdersPriorities(updates)
+      toast.success('Prioridad actualizada')
+    } catch (error) {
+      console.error(error)
+      toast.error('Error al actualizar la prioridad')
+      const data = await getAllDeliveryOrders()
+      setOrders(data)
+    }
+  }
 
   useEffect(() => {
     let result = orders
@@ -156,6 +204,9 @@ export default function DeliveryOrdersPage() {
             <table className="w-full">
               <thead className="bg-muted/50 border-b border-border">
                 <tr>
+                  {isPendingView && (
+                    <th className="text-left text-xs font-medium text-muted-foreground px-6 py-3 w-32">Prioridad</th>
+                  )}
                   <th className="text-left text-xs font-medium text-muted-foreground px-6 py-3">Factura</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Cliente</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Repartidor</th>
@@ -166,10 +217,46 @@ export default function DeliveryOrdersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map((order) => {
+                {filtered.map((order, idx) => {
                   const Icon = STATUS_ICONS[order.status] ?? Truck
                   return (
                     <tr key={order.id} className="hover:bg-muted/30 transition-colors group">
+                      {isPendingView && (
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-primary/10 text-primary">
+                              #{order.priority ?? (idx + 1)}
+                            </span>
+                            {canReorder && (
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => handleMoveOrder(order.id, 'top')}
+                                  title="Mover al inicio"
+                                  className="p-0.5 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                >
+                                  <ChevronsUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleMoveOrder(order.id, 'up')}
+                                  title="Subir"
+                                  className="p-0.5 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                  disabled={idx === 0}
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleMoveOrder(order.id, 'down')}
+                                  title="Bajar"
+                                  className="p-0.5 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                  disabled={idx === filtered.length - 1}
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      )}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -231,6 +318,9 @@ export default function DeliveryOrdersPage() {
                       <table className="w-full">
                         <thead className="bg-muted/30 border-b border-border">
                           <tr>
+                            {isPendingView && (
+                              <th className="text-left text-xs font-medium text-muted-foreground px-6 py-3 w-32">Prioridad</th>
+                            )}
                             <th className="text-left text-xs font-medium text-muted-foreground px-6 py-3">Factura</th>
                             <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Cliente</th>
                             <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Repartidor</th>
@@ -245,6 +335,13 @@ export default function DeliveryOrdersPage() {
                             const Icon = STATUS_ICONS[order.status] ?? Truck
                             return (
                               <tr key={order.id} className="hover:bg-muted/20 transition-colors group">
+                                {isPendingView && (
+                                  <td className="px-6 py-4">
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-primary/10 text-primary">
+                                      #{order.priority ?? '—'}
+                                    </span>
+                                  </td>
+                                )}
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">

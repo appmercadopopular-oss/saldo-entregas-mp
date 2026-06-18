@@ -58,6 +58,8 @@ export interface InvoiceDoc {
   isFullyDelivered: boolean
   /** Notas internas opcionales */
   notes?: string
+  /** Orden de prioridad numérica (1 = mayor prioridad) */
+  priority?: number
 }
 
 // -------------------------------------------------------------
@@ -173,6 +175,8 @@ export interface DeliveryOrderDoc {
   provincia?: string
   canton?: string
   distrito?: string
+  /** Orden de prioridad numérica (1 = mayor prioridad) */
+  priority?: number
 }
 
 // -------------------------------------------------------------

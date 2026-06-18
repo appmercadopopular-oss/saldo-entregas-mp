@@ -66,6 +66,9 @@ export default function MyOrdersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-primary/10 text-primary">
+                        Entrega #{order.priority ?? '—'}
+                      </span>
                       <span className="text-base font-bold text-foreground">{order.invoiceReference}</span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                         order.status === 'pending'

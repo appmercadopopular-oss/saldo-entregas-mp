@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { getAllInvoices } from '@/lib/firebase/firestore'
+import { getAllInvoices, updateInvoicesPriorities } from '@/lib/firebase/firestore'
 import { InvoiceDoc, InvoiceStatus, INVOICE_STATUS_LABELS } from '@/types'
 import { formatDate, formatRelative } from '@/lib/utils'
-import { Plus, Search, FileText, Filter, Package } from 'lucide-react'
+import { Plus, Search, FileText, Filter, Package, ChevronUp, ChevronDown, ChevronsUp } from 'lucide-react'
+import { toast } from 'sonner'
 
 const STATUS_STYLES: Record<InvoiceStatus, string> = {
   open: 'badge-info',
@@ -28,6 +29,53 @@ export default function InvoicesPage() {
       setLoading(false)
     })
   }, [])
+
+  const isPendingView = statusFilter === 'open' || statusFilter === 'in_progress'
+  const canReorder = isPendingView && !search.trim()
+
+  const handleMoveInvoice = async (invoiceId: string, direction: 'up' | 'down' | 'top') => {
+    const index = filtered.findIndex((i) => i.id === invoiceId)
+    if (index === -1) return
+
+    const newFiltered = [...filtered]
+    if (direction === 'up' && index > 0) {
+      const temp = newFiltered[index]
+      newFiltered[index] = newFiltered[index - 1]
+      newFiltered[index - 1] = temp
+    } else if (direction === 'down' && index < newFiltered.length - 1) {
+      const temp = newFiltered[index]
+      newFiltered[index] = newFiltered[index + 1]
+      newFiltered[index + 1] = temp
+    } else if (direction === 'top' && index > 0) {
+      const [item] = newFiltered.splice(index, 1)
+      newFiltered.unshift(item)
+    } else {
+      return
+    }
+
+    const updates = newFiltered.map((inv, idx) => ({
+      id: inv.id,
+      priority: idx + 1,
+    }))
+
+    setFiltered(newFiltered)
+    setInvoices((prev) =>
+      prev.map((inv) => {
+        const update = updates.find((u) => u.id === inv.id)
+        return update ? { ...inv, priority: update.priority } : inv
+      })
+    )
+
+    try {
+      await updateInvoicesPriorities(updates)
+      toast.success('Prioridad actualizada')
+    } catch (error) {
+      console.error(error)
+      toast.error('Error al actualizar la prioridad')
+      const data = await getAllInvoices()
+      setInvoices(data)
+    }
+  }
 
   useEffect(() => {
     let result = invoices
@@ -105,6 +153,9 @@ export default function InvoicesPage() {
             <table className="w-full">
               <thead className="bg-muted/50 border-b border-border">
                 <tr>
+                  {isPendingView && (
+                    <th className="text-left text-xs font-medium text-muted-foreground px-6 py-3 w-32">Prioridad</th>
+                  )}
                   <th className="text-left text-xs font-medium text-muted-foreground px-6 py-3">Referencia</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Cliente</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Fecha</th>
@@ -115,8 +166,44 @@ export default function InvoicesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map((inv) => (
+                {filtered.map((inv, idx) => (
                   <tr key={inv.id} className="hover:bg-muted/30 transition-colors group">
+                    {isPendingView && (
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-primary/10 text-primary">
+                            #{inv.priority ?? (idx + 1)}
+                          </span>
+                          {canReorder && (
+                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => handleMoveInvoice(inv.id, 'top')}
+                                title="Mover al inicio"
+                                className="p-0.5 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                              >
+                                <ChevronsUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleMoveInvoice(inv.id, 'up')}
+                                title="Subir"
+                                className="p-0.5 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                disabled={idx === 0}
+                              >
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleMoveInvoice(inv.id, 'down')}
+                                title="Bajar"
+                                className="p-0.5 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                disabled={idx === filtered.length - 1}
+                              >
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">

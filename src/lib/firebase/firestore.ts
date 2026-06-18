@@ -54,11 +54,16 @@ const usersRef = () => collection(db, 'users')
 export async function getOpenInvoices(): Promise<InvoiceDoc[]> {
   const q = query(
     invoicesRef(),
-    where('status', 'in', ['open', 'in_progress']),
-    orderBy('importedAt', 'desc')
+    where('status', 'in', ['open', 'in_progress'])
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as InvoiceDoc)
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as InvoiceDoc)
+  return docs.sort((a, b) => {
+    const pA = a.priority ?? Number.MAX_SAFE_INTEGER
+    const pB = b.priority ?? Number.MAX_SAFE_INTEGER
+    if (pA !== pB) return pA - pB
+    return (a.importedAt?.toMillis() ?? 0) - (b.importedAt?.toMillis() ?? 0)
+  })
 }
 
 /**
@@ -67,11 +72,22 @@ export async function getOpenInvoices(): Promise<InvoiceDoc[]> {
 export async function getAllInvoices(
   statusFilter?: InvoiceStatus
 ): Promise<InvoiceDoc[]> {
-  const constraints: QueryConstraint[] = [orderBy('importedAt', 'desc')]
-  if (statusFilter) constraints.unshift(where('status', '==', statusFilter))
+  const constraints: QueryConstraint[] = []
+  if (statusFilter) constraints.push(where('status', '==', statusFilter))
   const q = query(invoicesRef(), ...constraints)
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as InvoiceDoc)
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as InvoiceDoc)
+
+  return docs.sort((a, b) => {
+    if (statusFilter === 'open' || statusFilter === 'in_progress') {
+      const pA = a.priority ?? Number.MAX_SAFE_INTEGER
+      const pB = b.priority ?? Number.MAX_SAFE_INTEGER
+      if (pA !== pB) return pA - pB
+      return (a.importedAt?.toMillis() ?? 0) - (b.importedAt?.toMillis() ?? 0)
+    }
+    // Por defecto, orden inverso de importación
+    return (b.importedAt?.toMillis() ?? 0) - (a.importedAt?.toMillis() ?? 0)
+  })
 }
 
 /**
@@ -111,8 +127,27 @@ export async function saveImportedInvoice(
   invoice: Omit<InvoiceDoc, 'id'>,
   items: Omit<InvoiceItemDoc, 'id'>[]
 ): Promise<string> {
+  // Obtener la siguiente prioridad disponible
+  let nextPriority = 1
+  try {
+    const q = query(invoicesRef(), orderBy('priority', 'desc'), limit(1))
+    const snap = await getDocs(q)
+    if (!snap.empty) {
+      const data = snap.docs[0].data() as InvoiceDoc
+      nextPriority = (data.priority ?? 0) + 1
+    } else {
+      const allQuery = query(invoicesRef(), orderBy('importedAt', 'desc'))
+      const allSnap = await getDocs(allQuery)
+      if (!allSnap.empty) {
+        nextPriority = allSnap.size + 1
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching max priority for invoice:', error)
+  }
+
   // 1. Crear el documento de la factura
-  const invoiceDocRef = await addDoc(invoicesRef(), invoice)
+  const invoiceDocRef = await addDoc(invoicesRef(), { ...invoice, priority: nextPriority })
   const invoiceId = invoiceDocRef.id
 
   // 2. Crear todos los ítems en un batch
@@ -180,6 +215,25 @@ export async function createDeliveryOrder(
 ): Promise<string> {
   let newOrderId = ''
 
+  // Obtener la siguiente prioridad disponible para el despacho
+  let nextPriority = 1
+  try {
+    const q = query(deliveryOrdersRef(), orderBy('priority', 'desc'), limit(1))
+    const snap = await getDocs(q)
+    if (!snap.empty) {
+      const data = snap.docs[0].data() as DeliveryOrderDoc
+      nextPriority = (data.priority ?? 0) + 1
+    } else {
+      const allQuery = query(deliveryOrdersRef(), orderBy('createdAt', 'desc'))
+      const allSnap = await getDocs(allQuery)
+      if (!allSnap.empty) {
+        nextPriority = allSnap.size + 1
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching max priority for delivery order:', error)
+  }
+
   await runTransaction(db, async (tx) => {
     // 1. Verificar saldos pendientes para cada ítem
     const itemRefs = payload.items.map((item) =>
@@ -233,6 +287,7 @@ export async function createDeliveryOrder(
       provincia: payload.provincia,
       canton: payload.canton,
       distrito: payload.distrito,
+      priority: nextPriority,
     }
 
     // 3. Crear la orden en Firestore
@@ -387,13 +442,22 @@ export async function getDriverOrders(
 export async function getAllDeliveryOrders(
   statusFilter?: OrderStatus
 ): Promise<DeliveryOrderDoc[]> {
-  const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')]
-  if (statusFilter) constraints.unshift(where('status', '==', statusFilter))
+  const constraints: QueryConstraint[] = []
+  if (statusFilter) constraints.push(where('status', '==', statusFilter))
   const q = query(deliveryOrdersRef(), ...constraints)
   const snap = await getDocs(q)
-  return snap.docs.map(
-    (d) => ({ id: d.id, ...d.data() }) as DeliveryOrderDoc
-  )
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as DeliveryOrderDoc)
+
+  return docs.sort((a, b) => {
+    if (statusFilter === 'pending' || statusFilter === 'in_transit') {
+      const pA = a.priority ?? Number.MAX_SAFE_INTEGER
+      const pB = b.priority ?? Number.MAX_SAFE_INTEGER
+      if (pA !== pB) return pA - pB
+      return (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0)
+    }
+    // Por defecto, orden inverso de creación
+    return (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)
+  })
 }
 
 /**
@@ -423,13 +487,17 @@ export function subscribeToPendingDriverOrders(
   const q = query(
     deliveryOrdersRef(),
     where('assignedDriverId', '==', driverId),
-    where('status', 'in', ['pending', 'in_transit']),
-    orderBy('createdAt', 'desc')
+    where('status', 'in', ['pending', 'in_transit'])
   )
   return onSnapshot(q, (snap) => {
-    callback(
-      snap.docs.map((d) => ({ id: d.id, ...d.data() }) as DeliveryOrderDoc)
-    )
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as DeliveryOrderDoc)
+    docs.sort((a, b) => {
+      const pA = a.priority ?? Number.MAX_SAFE_INTEGER
+      const pB = b.priority ?? Number.MAX_SAFE_INTEGER
+      if (pA !== pB) return pA - pB
+      return (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0)
+    })
+    callback(docs)
   })
 }
 
@@ -515,4 +583,30 @@ export async function getActiveDrivers(): Promise<UserDoc[]> {
 export async function getAllUsers(): Promise<UserDoc[]> {
   const snap = await getDocs(usersRef())
   return snap.docs.map((d) => d.data() as UserDoc)
+}
+
+/**
+ * Actualiza las prioridades de facturas en lote.
+ */
+export async function updateInvoicesPriorities(
+  updates: { id: string; priority: number }[]
+): Promise<void> {
+  const batch = writeBatch(db)
+  updates.forEach((u) => {
+    batch.update(doc(db, 'invoices', u.id), { priority: u.priority })
+  })
+  await batch.commit()
+}
+
+/**
+ * Actualiza las prioridades de despachos en lote.
+ */
+export async function updateDeliveryOrdersPriorities(
+  updates: { id: string; priority: number }[]
+): Promise<void> {
+  const batch = writeBatch(db)
+  updates.forEach((u) => {
+    batch.update(doc(db, 'delivery_orders', u.id), { priority: u.priority })
+  })
+  await batch.commit()
 }

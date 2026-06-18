@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase/config'
-import { cancelDeliveryOrder } from '@/lib/firebase/firestore'
-import { DeliveryOrderDoc, ORDER_STATUS_LABELS } from '@/types'
+import { cancelDeliveryOrder, getActiveDrivers, reassignDeliveryOrderDriver } from '@/lib/firebase/firestore'
+import { DeliveryOrderDoc, UserDoc, ORDER_STATUS_LABELS } from '@/types'
 import { formatDateTime, formatNumber } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
@@ -28,6 +28,28 @@ export default function AdminOrderDetailPage() {
   const [order, setOrder] = useState<DeliveryOrderDoc | null>(null)
   const [loading, setLoading] = useState(true)
   const [cancelling, setCancelling] = useState(false)
+  const [drivers, setDrivers] = useState<UserDoc[]>([])
+  const [reassigning, setReassigning] = useState(false)
+
+  useEffect(() => {
+    if (order && order.status === 'pending') {
+      getActiveDrivers().then(setDrivers)
+    }
+  }, [order])
+
+  async function handleReassignDriver(driverId: string, driverName: string) {
+    if (!order) return
+    setReassigning(true)
+    try {
+      await reassignDeliveryOrderDriver(order.id, driverId, driverName)
+      setOrder((prev) => prev ? { ...prev, assignedDriverId: driverId, assignedDriverName: driverName } : null)
+      toast.success(`Orden reasignada a ${driverName} exitosamente`)
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al reasignar chofer')
+    } finally {
+      setReassigning(false)
+    }
+  }
 
   useEffect(() => {
     // Suscribirse en tiempo real al estado de la orden
@@ -256,11 +278,30 @@ export default function AdminOrderDetailPage() {
 
           {/* Col 2 */}
           <div className="space-y-3.5">
-            <div className="flex items-center gap-3">
-              <Truck className="w-4.5 h-4.5 text-muted-foreground flex-shrink-0" />
-              <div>
+            <div className="flex items-start gap-3">
+              <Truck className="w-4.5 h-4.5 text-muted-foreground flex-shrink-0 mt-1" />
+              <div className="flex-1">
                 <div className="text-xs text-muted-foreground">Repartidor Asignado</div>
-                <div className="font-semibold text-foreground">{order.assignedDriverName}</div>
+                {isPending ? (
+                  <div className="mt-1 flex items-center gap-2">
+                    <select
+                      value={order.assignedDriverId}
+                      disabled={reassigning}
+                      onChange={(e) => {
+                        const drv = drivers.find((d) => d.uid === e.target.value)
+                        if (drv) handleReassignDriver(drv.uid, drv.displayName)
+                      }}
+                      className="px-2 py-1 text-xs rounded-lg border border-border bg-background text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    >
+                      {drivers.map((d) => (
+                        <option key={d.uid} value={d.uid}>{d.displayName}</option>
+                      ))}
+                    </select>
+                    {reassigning && <span className="text-[10px] text-muted-foreground">Guardando...</span>}
+                  </div>
+                ) : (
+                  <div className="font-semibold text-foreground">{order.assignedDriverName}</div>
+                )}
               </div>
             </div>
 
@@ -460,7 +501,6 @@ export default function AdminOrderDetailPage() {
           <div className="text-[9px] text-gray-500 mt-0.5 text-center">
             {order.assignedDriverName}
           </div>
-          <div className="text-[9px] text-gray-500 text-center">Despachado desde Bodega Central</div>
         </div>
       </div>
 

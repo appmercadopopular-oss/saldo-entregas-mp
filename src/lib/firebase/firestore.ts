@@ -477,6 +477,21 @@ export async function updateDeliveryOrderStatus(
   await updateDoc(orderRef, { status })
 }
 
+/**
+ * Reasigna el chofer de una orden de despacho (solo si está en estado 'pending').
+ */
+export async function reassignDeliveryOrderDriver(
+  orderId: string,
+  driverId: string,
+  driverName: string
+): Promise<void> {
+  const orderRef = doc(db, 'delivery_orders', orderId)
+  await updateDoc(orderRef, {
+    assignedDriverId: driverId,
+    assignedDriverName: driverName,
+  })
+}
+
 // ─────────────────────────────────────────────────────────────
 // USUARIOS
 // ─────────────────────────────────────────────────────────────

@@ -545,29 +545,25 @@ export default function DriverOrderDetailPage() {
 
       {/* Fullscreen Signature Modal Overlay */}
       {isFullScreenOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/98 flex flex-col p-4 md:p-6 select-none">
+        <div className="fixed inset-0 z-50 bg-slate-950/98 flex flex-col p-2 md:p-3 select-none animate-enter">
           {/* Header */}
-          <div className="flex items-start justify-between pb-3 border-b border-slate-800">
-            <div>
-              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                <PenTool className="w-4 h-4 text-primary" />
-                Firma de Conformidad
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Por favor, firme con su dedo o lápiz táctil dentro del recuadro blanco.
-              </p>
+          <div className="flex items-center justify-between pb-1.5 border-b border-slate-850">
+            <div className="flex items-center gap-2">
+              <PenTool className="w-3.5 h-3.5 text-primary" />
+              <span className="text-sm font-bold text-slate-200">Firma del Cliente</span>
+              <span className="text-[10px] text-slate-400 hidden sm:inline">(Firme con el dedo o lápiz en el recuadro blanco)</span>
             </div>
             <button
               type="button"
               onClick={() => setIsFullScreenOpen(false)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Canvas area (forced to landscape aspects or expanding fully) */}
-          <div className="flex-1 my-4 bg-white rounded-xl shadow-2xl relative overflow-hidden flex flex-col touch-none border border-slate-800">
+          <div className="flex-1 my-2 bg-white rounded-xl shadow-2xl relative overflow-hidden flex flex-col touch-none border border-slate-850">
             <canvas
               ref={canvasRef}
               onMouseDown={startDrawing}
@@ -580,38 +576,38 @@ export default function DriverOrderDetailPage() {
               className="w-full h-full cursor-crosshair block bg-white"
             />
             {!isSigned && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-slate-400 text-sm select-none gap-2">
-                <span className="font-medium tracking-wide">Dibuje su firma aquí</span>
-                <span className="text-xs text-slate-500/80">(Para mayor comodidad, gire su dispositivo horizontalmente)</span>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-slate-400 text-xs select-none gap-1">
+                <span className="font-semibold tracking-wide text-sm">Dibuje su firma aquí</span>
+                <span className="text-[10px] text-slate-500/80">(Gire su dispositivo horizontalmente para mayor comodidad)</span>
               </div>
             )}
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center justify-between gap-4 pt-2 border-t border-slate-800">
+          <div className="flex items-center justify-between gap-4 pt-1.5 border-t border-slate-850">
             <button
               type="button"
               onClick={() => setIsFullScreenOpen(false)}
-              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-sm font-semibold rounded-lg transition-all"
+              className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold rounded-lg transition-all"
             >
               Cancelar
             </button>
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button
                 type="button"
                 onClick={clearCanvas}
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5"
+                className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold rounded-lg transition-all flex items-center gap-1"
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-3.5 h-3.5" />
                 Limpiar
               </button>
               <button
                 type="button"
                 onClick={handleSaveSignature}
                 disabled={!isSigned}
-                className="px-6 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg transition-all shadow-md flex items-center gap-1.5"
+                className="px-4.5 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-all shadow-md flex items-center gap-1"
               >
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-3.5 h-3.5" />
                 Confirmar Firma
               </button>
             </div>

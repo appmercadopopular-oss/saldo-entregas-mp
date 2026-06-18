@@ -14,7 +14,7 @@ import { COSTA_RICA_DATA } from '@/lib/costaRica'
 type DispatchItem = {
   invoiceItem: InvoiceItemDoc
   selected: boolean
-  quantity: number
+  quantity: string
   error?: string
 }
 
@@ -74,7 +74,7 @@ export default function DispatchPage() {
       setDispatchItems(
         invItems
           .filter((i) => i.quantityPending > 0)
-          .map((i) => ({ invoiceItem: i, selected: false, quantity: i.quantityPending }))
+          .map((i) => ({ invoiceItem: i, selected: false, quantity: i.quantityPending.toString() }))
       )
       setDrivers(driverList)
       setLoading(false)
@@ -88,11 +88,12 @@ export default function DispatchPage() {
     )
   }
 
-  function setQty(id: string, val: number) {
+  function setQty(id: string, val: string) {
     setDispatchItems((prev) =>
       prev.map((d) => {
         if (d.invoiceItem.id !== id) return d
-        const { valid, error } = validateDispatchQuantity(val, d.invoiceItem.quantityPending)
+        const numVal = val === '' ? 0 : Number(val)
+        const { valid, error } = validateDispatchQuantity(numVal, d.invoiceItem.quantityPending)
         return { ...d, quantity: val, error: valid ? undefined : error }
       })
     )
@@ -101,8 +102,9 @@ export default function DispatchPage() {
   function adjustQty(id: string, delta: number) {
     const item = dispatchItems.find((d) => d.invoiceItem.id === id)
     if (!item) return
-    const newVal = Math.max(0, Math.min(item.invoiceItem.quantityPending, item.quantity + delta))
-    setQty(id, newVal)
+    const numQty = item.quantity === '' ? 0 : Number(item.quantity)
+    const newVal = Math.max(0, Math.min(item.invoiceItem.quantityPending, numQty + delta))
+    setQty(id, newVal.toString())
   }
 
   const selectedItems = dispatchItems.filter((d) => d.selected)
@@ -135,7 +137,7 @@ export default function DispatchPage() {
             sku: d.invoiceItem.sku,
             description: d.invoiceItem.description,
             unit: d.invoiceItem.unit,
-            quantityDispatched: d.quantity,
+            quantityDispatched: Number(d.quantity),
           })),
         },
         firebaseUser!.uid,
@@ -167,6 +169,12 @@ export default function DispatchPage() {
         <p className="text-muted-foreground mt-1">
           Factura <strong>{invoice?.internalReference}</strong> · {invoice?.clientName}
         </p>
+        {invoice?.notes && (
+          <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 max-w-2xl">
+            <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Nota del Vendedor / Importación</p>
+            <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">{invoice.notes}</p>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -339,7 +347,7 @@ export default function DispatchPage() {
                       <input
                         type="number"
                         value={d.quantity}
-                        onChange={(e) => setQty(d.invoiceItem.id, Number(e.target.value))}
+                        onChange={(e) => setQty(d.invoiceItem.id, e.target.value)}
                         min={0.01}
                         step="0.01"
                         max={d.invoiceItem.quantityPending}
@@ -373,7 +381,7 @@ export default function DispatchPage() {
                 <div key={d.invoiceItem.id} className="flex justify-between text-sm">
                   <span className="text-muted-foreground truncate mr-4">{d.invoiceItem.description}</span>
                   <span className="font-medium text-foreground whitespace-nowrap">
-                    {formatNumber(d.quantity)} {d.invoiceItem.unit}
+                    {formatNumber(Number(d.quantity))} {d.invoiceItem.unit}
                   </span>
                 </div>
               ))}

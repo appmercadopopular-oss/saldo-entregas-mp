@@ -415,6 +415,34 @@ export default function ImportInvoicePage() {
             </div>
           </div>
 
+          {/* Import comments / notes */}
+          <div className="p-6 border-b border-border bg-muted/10">
+            <label htmlFor="import-notes" className="block text-sm font-bold text-foreground mb-2">
+              Comentarios del Vendedor / Notas de Despacho (Opcional)
+            </label>
+            <textarea
+              id="import-notes"
+              value={preview.invoice.notes || ''}
+              onChange={(e) => {
+                const notes = e.target.value
+                setPreview((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        invoice: {
+                          ...prev.invoice,
+                          notes,
+                        },
+                      }
+                    : null
+                )
+              }}
+              placeholder="Escriba comentarios, solicitudes de fechas o indicaciones especiales..."
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all resize-none"
+            />
+          </div>
+
           {/* Items table */}
           <div className="p-6">
             <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">

@@ -17,7 +17,7 @@ import {
 
 type ItemConfirmation = {
   invoiceItemId: string
-  quantityConfirmed: number
+  quantityConfirmed: string
   returnReason: string
   hasException: boolean
 }
@@ -72,7 +72,7 @@ export default function DriverOrderDetailPage() {
       setConfirmations(
         data.items.map((item) => ({
           invoiceItemId: item.invoiceItemId,
-          quantityConfirmed: item.quantityDispatched,
+          quantityConfirmed: item.quantityDispatched.toString(),
           returnReason: '',
           hasException: false,
         }))
@@ -192,12 +192,13 @@ export default function DriverOrderDetailPage() {
     }
   }, [isFullScreenOpen])
 
-  function updateConfirmation(invoiceItemId: string, confirmed: number) {
+  function updateConfirmation(invoiceItemId: string, confirmed: string) {
     setConfirmations((prev) =>
       prev.map((c) => {
         if (c.invoiceItemId !== invoiceItemId) return c
         const orderItem = order!.items.find((i) => i.invoiceItemId === invoiceItemId)!
-        const hasException = confirmed < orderItem.quantityDispatched
+        const numConfirmed = confirmed === '' ? 0 : Number(confirmed)
+        const hasException = numConfirmed < orderItem.quantityDispatched
         return { ...c, quantityConfirmed: confirmed, hasException, returnReason: hasException ? c.returnReason : '' }
       })
     )
@@ -224,7 +225,10 @@ export default function DriverOrderDetailPage() {
         orderId: order.id,
         driverNotes,
         signatureDataUrl,
-        items: confirmations,
+        items: confirmations.map((c) => ({
+          ...c,
+          quantityConfirmed: Number(c.quantityConfirmed),
+        })),
       })
       toast.success(
         hasExceptions
@@ -356,7 +360,7 @@ export default function DriverOrderDetailPage() {
                           <input
                             type="number"
                             value={conf.quantityConfirmed}
-                            onChange={(e) => updateConfirmation(item.invoiceItemId, Number(e.target.value))}
+                            onChange={(e) => updateConfirmation(item.invoiceItemId, e.target.value)}
                             min={0}
                             step="0.01"
                             max={item.quantityDispatched}

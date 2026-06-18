@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase/config'
-import { cancelDeliveryOrder, getActiveDrivers, reassignDeliveryOrderDriver } from '@/lib/firebase/firestore'
+import { cancelDeliveryOrder, getActiveDrivers, reassignDeliveryOrderDriver, updateDeliveryOrderScheduledDateTime } from '@/lib/firebase/firestore'
 import { DeliveryOrderDoc, UserDoc, ORDER_STATUS_LABELS } from '@/types'
 import { formatDateTime, formatNumber } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -30,6 +30,35 @@ export default function AdminOrderDetailPage() {
   const [cancelling, setCancelling] = useState(false)
   const [drivers, setDrivers] = useState<UserDoc[]>([])
   const [reassigning, setReassigning] = useState(false)
+
+  // Schedule edit states
+  const [isEditingSchedule, setIsEditingSchedule] = useState(false)
+  const [editDate, setEditDate] = useState('')
+  const [editTime, setEditTime] = useState('')
+  const [savingSchedule, setSavingSchedule] = useState(false)
+
+  useEffect(() => {
+    if (order) {
+      setEditDate(order.scheduledDate || '')
+      setEditTime(order.scheduledTime || '')
+    }
+  }, [order])
+
+  async function handleSaveSchedule(e: React.FormEvent) {
+    e.preventDefault()
+    if (!order) return
+    setSavingSchedule(true)
+    try {
+      await updateDeliveryOrderScheduledDateTime(order.id, editDate, editTime)
+      setOrder((prev) => prev ? { ...prev, scheduledDate: editDate, scheduledTime: editTime } : null)
+      setIsEditingSchedule(false)
+      toast.success('Programación del despacho actualizada con éxito')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al actualizar la programación')
+    } finally {
+      setSavingSchedule(false)
+    }
+  }
 
   useEffect(() => {
     if (order && order.status === 'pending') {
@@ -270,7 +299,7 @@ export default function AdminOrderDetailPage() {
             <div className="flex items-center gap-3">
               <Calendar className="w-4.5 h-4.5 text-muted-foreground flex-shrink-0" />
               <div>
-                <div className="text-xs text-muted-foreground">Fecha Planificada</div>
+                <div className="text-xs text-muted-foreground">Fecha de Creación</div>
                 <div className="font-semibold text-foreground">{formatDateTime(order.createdAt)}</div>
               </div>
             </div>
@@ -310,6 +339,67 @@ export default function AdminOrderDetailPage() {
               <div>
                 <div className="text-xs text-muted-foreground">Planificado por</div>
                 <div className="font-semibold text-foreground">{order.createdByName}</div>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <Clock className="w-4.5 h-4.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="text-xs text-muted-foreground">Entrega Programada</div>
+                {isEditingSchedule ? (
+                  <form onSubmit={handleSaveSchedule} className="mt-1 space-y-1.5 max-w-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="date"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        className="px-2 py-1 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                      <input
+                        type="time"
+                        value={editTime}
+                        onChange={(e) => setEditTime(e.target.value)}
+                        className="px-2 py-1 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={savingSchedule}
+                        className="px-2.5 py-1 text-[10px] bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors"
+                      >
+                        {savingSchedule ? 'Guardando...' : 'Guardar'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingSchedule(false)
+                          setEditDate(order.scheduledDate || '')
+                          setEditTime(order.scheduledTime || '')
+                        }}
+                        className="px-2.5 py-1 text-[10px] border border-border text-muted-foreground font-semibold rounded-lg hover:bg-muted transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="font-semibold text-foreground">
+                      {order.scheduledDate
+                        ? `${order.scheduledDate} ${order.scheduledTime ? `a las ${order.scheduledTime}` : ''}`
+                        : 'No programada (inmediata)'}
+                    </span>
+                    {isPending && (
+                      <button
+                        onClick={() => setIsEditingSchedule(true)}
+                        className="text-[10px] text-primary hover:underline font-semibold"
+                      >
+                        Editar
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

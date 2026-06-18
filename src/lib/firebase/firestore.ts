@@ -328,19 +328,44 @@ export async function createDeliveryOrder(
 export async function confirmDelivery(
   payload: ConfirmDeliveryPayload
 ): Promise<void> {
+  const orderRef = doc(db, 'delivery_orders', payload.orderId)
+  const orderSnap = await getDoc(orderRef)
+  if (!orderSnap.exists()) throw new Error('Orden no encontrada')
+
+  const order = orderSnap.data() as DeliveryOrderDoc
+
+  if (order.status !== 'pending' && order.status !== 'in_transit') {
+    throw new Error('Esta orden ya fue procesada')
+  }
+
+  // Obtener todas las referencias de ítems de la factura antes de iniciar la transacción
+  const itemsSnap = await getDocs(invoiceItemsRef(order.invoiceId))
+  const allItemDocs = itemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as InvoiceItemDoc)
+
   await runTransaction(db, async (tx) => {
-    // 1. Leer la orden
-    const orderRef = doc(db, 'delivery_orders', payload.orderId)
-    const orderSnap = await tx.get(orderRef)
-    if (!orderSnap.exists()) throw new Error('Orden no encontrada')
-
-    const order = orderSnap.data() as DeliveryOrderDoc
-
-    if (order.status !== 'pending' && order.status !== 'in_transit') {
+    // Re-verificar estado de la orden en la transacción
+    const txOrderSnap = await tx.get(orderRef)
+    if (!txOrderSnap.exists()) throw new Error('Orden no encontrada')
+    const txOrder = txOrderSnap.data() as DeliveryOrderDoc
+    if (txOrder.status !== 'pending' && txOrder.status !== 'in_transit') {
       throw new Error('Esta orden ya fue procesada')
     }
 
-    // 2. Para cada ítem confirmado, actualizar el InvoiceItem
+    // Leer el estado actual de todos los ítems de la factura dentro de la transacción
+    const itemRefs = allItemDocs.map((item) =>
+      doc(db, 'invoices', order.invoiceId, 'items', item.id)
+    )
+    const txItemSnaps = await Promise.all(itemRefs.map((ref) => tx.get(ref)))
+
+    const itemsMap = new Map<string, InvoiceItemDoc>()
+    for (let i = 0; i < txItemSnaps.length; i++) {
+      const snap = txItemSnaps[i]
+      if (snap.exists()) {
+        itemsMap.set(snap.id, { id: snap.id, ...snap.data() } as InvoiceItemDoc)
+      }
+    }
+
+    // Para cada ítem entregado, determinar cantidades entregadas y devueltas
     let hasAnyException = false
     const updatedItems = order.items.map((orderItem) => {
       const confirmation = payload.items.find(
@@ -364,31 +389,34 @@ export async function confirmDelivery(
       } as DeliveryOrderItem
     })
 
-    // 3. Actualizar los InvoiceItems con las cantidades confirmadas
-    const invoiceItemRefs = updatedItems.map((item) =>
-      doc(db, 'invoices', order.invoiceId, 'items', item.invoiceItemId)
-    )
-    const invoiceItemSnaps = await Promise.all(
-      invoiceItemRefs.map((ref) => tx.get(ref))
-    )
+    // Actualizar los InvoiceItems en la transacción y evaluar si todos están completos (saldo pendiente <= 0)
+    let allCompleted = true
+    for (const itemDoc of allItemDocs) {
+      const currentItem = itemsMap.get(itemDoc.id)
+      if (!currentItem) continue
 
-    for (let i = 0; i < invoiceItemSnaps.length; i++) {
-      const snap = invoiceItemSnaps[i]
-      if (!snap.exists()) continue
+      const deliveryItem = updatedItems.find((u) => u.invoiceItemId === itemDoc.id)
+      
+      let newDelivered = currentItem.quantityDelivered
+      if (deliveryItem) {
+        newDelivered = Math.round((currentItem.quantityDelivered + deliveryItem.quantityConfirmed) * 100) / 100
+      }
+      const newPending = Math.round((currentItem.quantityInvoiced - newDelivered) * 100) / 100
+      const itemCompleted = newPending <= 0
 
-      const itemData = snap.data() as InvoiceItemDoc
-      const confirmedQty = updatedItems[i].quantityConfirmed
-      const newDelivered = Math.round((itemData.quantityDelivered + confirmedQty) * 100) / 100
-      const newPending = Math.round((itemData.quantityInvoiced - newDelivered) * 100) / 100
+      if (!itemCompleted) {
+        allCompleted = false
+      }
 
-      tx.update(invoiceItemRefs[i], {
+      const ref = doc(db, 'invoices', order.invoiceId, 'items', itemDoc.id)
+      tx.update(ref, {
         quantityDelivered: newDelivered,
         quantityPending: newPending,
-        isCompleted: newPending <= 0,
+        isCompleted: itemCompleted,
       })
     }
 
-    // 4. Actualizar la orden
+    // Actualizar la orden de despacho
     const finalStatus: OrderStatus = hasAnyException
       ? 'delivered_with_exceptions'
       : 'delivered'
@@ -401,35 +429,20 @@ export async function confirmDelivery(
       signatureDataUrl: payload.signatureDataUrl || null,
     })
 
-    // 5. Verificar si la factura queda completamente entregada
-    await checkAndCloseInvoice(tx, order.invoiceId)
+    // Actualizar la factura
+    const invoiceRef = doc(db, 'invoices', order.invoiceId)
+    if (allCompleted) {
+      tx.update(invoiceRef, {
+        status: 'completed' as InvoiceStatus,
+        isFullyDelivered: true,
+      })
+    } else {
+      tx.update(invoiceRef, {
+        status: 'in_progress' as InvoiceStatus,
+        isFullyDelivered: false,
+      })
+    }
   })
-}
-
-/**
- * Verifica si todos los ítems de una factura están completados
- * y actualiza su estado a 'completed' o 'in_progress' según corresponda.
- * Se llama dentro de una transacción existente.
- */
-async function checkAndCloseInvoice(
-  tx: Parameters<Parameters<typeof runTransaction>[1]>[0],
-  invoiceId: string
-) {
-  const itemsSnap = await getDocs(invoiceItemsRef(invoiceId))
-  const allCompleted = itemsSnap.docs.every(
-    (d) => (d.data() as InvoiceItemDoc).isCompleted
-  )
-  if (allCompleted) {
-    tx.update(doc(db, 'invoices', invoiceId), {
-      status: 'completed' as InvoiceStatus,
-      isFullyDelivered: true,
-    })
-  } else {
-    tx.update(doc(db, 'invoices', invoiceId), {
-      status: 'in_progress' as InvoiceStatus,
-      isFullyDelivered: false,
-    })
-  }
 }
 
 /**
@@ -627,3 +640,19 @@ export async function updateDeliveryOrdersPriorities(
   })
   await batch.commit()
 }
+
+/**
+ * Actualiza la fecha y hora programada de una orden de despacho.
+ */
+export async function updateDeliveryOrderScheduledDateTime(
+  orderId: string,
+  scheduledDate: string,
+  scheduledTime: string
+): Promise<void> {
+  const orderRef = doc(db, 'delivery_orders', orderId)
+  await updateDoc(orderRef, {
+    scheduledDate: scheduledDate || null,
+    scheduledTime: scheduledTime || null,
+  })
+}
+

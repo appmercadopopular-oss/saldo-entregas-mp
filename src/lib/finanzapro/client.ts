@@ -123,14 +123,53 @@ export async function fetchInvoiceById(
 export async function fetchInvoicesByDate(
   date: string
 ): Promise<any[]> {
-  const response = await finanzaProFetch<any>(
-    `/invoicing-service/v2/invoices?invoiceDate=${encodeURIComponent(date)}`
-  )
+  let allInvoices: any[] = []
+  let page = 1
+  let hasMore = true
 
-  if (response && response.data !== undefined) {
-    return response.data
+  while (hasMore) {
+    console.log(`[FinanzaPro Client] Fetching invoices for ${date}, page ${page}...`)
+    const response = await finanzaProFetch<any>(
+      `/invoicing-service/v2/invoices?invoiceDate=${encodeURIComponent(date)}&page=${page}&limit=100`
+    )
+
+    let pageData: any[] = []
+    if (response && response.data !== undefined) {
+      pageData = response.data
+    } else if (Array.isArray(response)) {
+      pageData = response
+    }
+
+    if (pageData.length === 0) {
+      break
+    }
+
+    allInvoices.push(...pageData)
+
+    const pagination = response.pagination
+    if (pagination) {
+      const itemsPerPage = pagination.perPage || 50
+      if (pageData.length < itemsPerPage) {
+        hasMore = false
+      } else {
+        page++
+      }
+    } else {
+      if (pageData.length < 50) {
+        hasMore = false
+      } else {
+        page++
+      }
+    }
+
+    // Safety page limit check to prevent infinite loops
+    if (page > 15) {
+      console.warn(`[FinanzaPro Client] Safety page limit reached (15 pages) for date: ${date}`)
+      break
+    }
   }
-  return response || []
+
+  return allInvoices
 }
 
 /**

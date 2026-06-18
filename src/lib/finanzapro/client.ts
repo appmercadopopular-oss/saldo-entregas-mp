@@ -214,6 +214,10 @@ export async function fetchInvoiceByReference(
 
         if (match) {
           console.log(`[FinanzaPro Client] Match found using query parameter '${paramName}'!`)
+          if (match.id) {
+            console.log(`[FinanzaPro Client] Fetching full details for matched invoice ID: ${match.id}`)
+            return await fetchInvoiceById(match.id)
+          }
           return match
         }
       }

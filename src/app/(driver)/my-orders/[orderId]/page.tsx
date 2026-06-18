@@ -11,7 +11,8 @@ import { formatDateTime, formatNumber } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
   ArrowLeft, CheckCircle2, AlertTriangle, Loader2,
-  MapPin, Package, Truck, User, Clock, ChevronDown, ChevronUp
+  MapPin, Package, Truck, User, Clock, ChevronDown, ChevronUp,
+  X, PenTool, RotateCcw
 } from 'lucide-react'
 
 type ItemConfirmation = {
@@ -35,8 +36,18 @@ export default function DriverOrderDetailPage() {
   // Signature canvas states & refs
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isSigned, setIsSigned] = useState(false)
+  const [signatureImg, setSignatureImg] = useState<string | null>(null)
+  const [isFullScreenOpen, setIsFullScreenOpen] = useState(false)
   const drawingRef = useRef(false)
   const lastPosRef = useRef({ x: 0, y: 0 })
+
+  const handleSaveSignature = () => {
+    const canvas = canvasRef.current
+    if (!canvas || !isSigned) return
+    const dataUrl = canvas.toDataURL('image/png')
+    setSignatureImg(dataUrl)
+    setIsFullScreenOpen(false)
+  }
 
   async function handleStartRoute() {
     if (!order) return
@@ -136,6 +147,8 @@ export default function DriverOrderDetailPage() {
 
   // Canvas Sizing and Auto-Resize/Rotate handling
   useEffect(() => {
+    if (!isFullScreenOpen) return
+
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -161,6 +174,8 @@ export default function DriverOrderDetailPage() {
 
     // Delay initialization slightly to ensure offsetWidth is calculated correctly
     const timer = setTimeout(() => {
+      const canvas = canvasRef.current
+      if (!canvas) return
       canvas.width = canvas.offsetWidth
       canvas.height = canvas.offsetHeight
       const ctx = canvas.getContext('2d')
@@ -168,14 +183,14 @@ export default function DriverOrderDetailPage() {
         ctx.fillStyle = '#ffffff'
         ctx.fillRect(0, 0, canvas.width, canvas.height)
       }
-    }, 50)
+    }, 100)
 
     window.addEventListener('resize', resizeCanvas)
     return () => {
       clearTimeout(timer)
       window.removeEventListener('resize', resizeCanvas)
     }
-  }, [order]) // Re-run once when order finishes loading
+  }, [isFullScreenOpen])
 
   function updateConfirmation(invoiceItemId: string, confirmed: number) {
     setConfirmations((prev) =>
@@ -196,17 +211,13 @@ export default function DriverOrderDetailPage() {
 
   const hasExceptions = confirmations.some((c) => c.hasException)
   const missingReasons = confirmations.some((c) => c.hasException && !c.returnReason.trim())
-  const canSubmit = !missingReasons && isSigned
+  const canSubmit = !missingReasons && !!signatureImg
 
   async function handleConfirm() {
     if (!canSubmit || !order) return
     setSaving(true)
     
-    let signatureDataUrl = ''
-    const canvas = canvasRef.current
-    if (canvas && isSigned) {
-      signatureDataUrl = canvas.toDataURL('image/png')
-    }
+    const signatureDataUrl = signatureImg || ''
 
     try {
       await confirmDelivery({
@@ -416,41 +427,60 @@ export default function DriverOrderDetailPage() {
         </div>
       ) : (
         <>
-          {/* Client signature canvas */}
+          {/* Client signature block */}
           <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-3">
             <label className="text-sm font-bold text-foreground flex items-center gap-1.5">
               Firma de Conformidad del Cliente *
             </label>
             <p className="text-xs text-muted-foreground">
-              El cliente debe firmar con el dedo o lápiz táctil en el recuadro para confirmar la recepción.
+              El cliente debe firmar para confirmar la recepción conforme del material.
             </p>
-            <div className="border border-dashed border-border rounded-lg overflow-hidden bg-white relative h-48 touch-none">
-              <canvas
-                ref={canvasRef}
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={stopDrawing}
-                onMouseLeave={stopDrawing}
-                onTouchStart={startDrawing}
-                onTouchMove={draw}
-                onTouchEnd={stopDrawing}
-                className="w-full h-full cursor-crosshair block bg-white"
-              />
-              {!isSigned && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-muted-foreground/30 text-sm select-none">
-                  Firme aquí
+
+            {signatureImg ? (
+              <div className="space-y-3">
+                <div className="border border-border rounded-lg p-3 bg-white relative h-36 flex items-center justify-center shadow-inner overflow-hidden">
+                  <img
+                    src={signatureImg}
+                    alt="Firma del cliente"
+                    className="max-h-full max-w-full object-contain pointer-events-none"
+                  />
+                  <div className="absolute top-2 right-2 bg-green-500/10 text-green-600 dark:text-green-500 border border-green-500/20 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Registrada
+                  </div>
                 </div>
-              )}
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={clearCanvas}
-                className="px-3 py-1.5 border border-border rounded-lg text-xs font-semibold hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
-              >
-                Limpiar Firma
-              </button>
-            </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSignatureImg(null)
+                      setIsSigned(false)
+                      setIsFullScreenOpen(true)
+                    }}
+                    className="px-3 py-1.5 border border-border rounded-lg text-xs font-semibold hover:bg-muted text-muted-foreground hover:text-foreground transition-all flex items-center gap-1.5"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Firmar Nuevamente
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center justify-center bg-muted/10 min-h-[144px]">
+                <PenTool className="w-8 h-8 text-muted-foreground/50 mb-2" />
+                <p className="text-sm font-semibold text-muted-foreground">Firma pendiente de registrar</p>
+                <p className="text-xs text-muted-foreground/75 mt-0.5 mb-4 text-center max-w-[280px]">
+                  Pulse el botón para abrir el panel de firma a pantalla completa.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsFullScreenOpen(true)}
+                  className="px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 shadow-sm"
+                >
+                  <PenTool className="w-4 h-4" />
+                  Abrir Panel de Firma
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Driver notes */}
@@ -477,7 +507,7 @@ export default function DriverOrderDetailPage() {
             </div>
           )}
 
-          {!isSigned && (
+          {!signatureImg && (
             <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
               <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-amber-700 dark:text-amber-400">
@@ -511,6 +541,82 @@ export default function DriverOrderDetailPage() {
                 : 'Confirmar Entrega Completa'}
           </button>
         </>
+      )}
+
+      {/* Fullscreen Signature Modal Overlay */}
+      {isFullScreenOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/98 flex flex-col p-4 md:p-6 select-none">
+          {/* Header */}
+          <div className="flex items-start justify-between pb-3 border-b border-slate-800">
+            <div>
+              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <PenTool className="w-4 h-4 text-primary" />
+                Firma de Conformidad
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Por favor, firme con su dedo o lápiz táctil dentro del recuadro blanco.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsFullScreenOpen(false)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Canvas area (forced to landscape aspects or expanding fully) */}
+          <div className="flex-1 my-4 bg-white rounded-xl shadow-2xl relative overflow-hidden flex flex-col touch-none border border-slate-800">
+            <canvas
+              ref={canvasRef}
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={stopDrawing}
+              onMouseLeave={stopDrawing}
+              onTouchStart={startDrawing}
+              onTouchMove={draw}
+              onTouchEnd={stopDrawing}
+              className="w-full h-full cursor-crosshair block bg-white"
+            />
+            {!isSigned && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-slate-400 text-sm select-none gap-2">
+                <span className="font-medium tracking-wide">Dibuje su firma aquí</span>
+                <span className="text-xs text-slate-500/80">(Para mayor comodidad, gire su dispositivo horizontalmente)</span>
+              </div>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center justify-between gap-4 pt-2 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsFullScreenOpen(false)}
+              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-sm font-semibold rounded-lg transition-all"
+            >
+              Cancelar
+            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={clearCanvas}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Limpiar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSignature}
+                disabled={!isSigned}
+                className="px-6 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg transition-all shadow-md flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Confirmar Firma
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

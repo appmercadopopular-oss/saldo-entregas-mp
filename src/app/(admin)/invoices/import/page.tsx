@@ -25,7 +25,7 @@ export default function ImportInvoicePage() {
   
   // Direct Search States
   const [query, setQuery] = useState('')
-  const [mode, setMode] = useState<'reference' | 'id'>('reference')
+  const mode = 'reference'
   const [alreadyExists, setAlreadyExists] = useState(false)
   
   // Date Range Search States
@@ -72,7 +72,7 @@ export default function ImportInvoicePage() {
 
       const uid = firebaseUser?.uid ?? 'system'
       const res = await fetch(
-        `/api/finanzapro/invoice?${mode === 'id' ? 'id' : 'reference'}=${encodeURIComponent(query.trim())}`,
+        `/api/finanzapro/invoice?reference=${encodeURIComponent(query.trim())}`,
         { headers: { 'x-user-uid': uid } }
       )
       const json = await res.json()
@@ -197,7 +197,7 @@ export default function ImportInvoicePage() {
               : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          Búsqueda Directa (Referencia / ID)
+          Búsqueda Directa
         </button>
         <button
           onClick={() => { setSearchTab('range'); setPreview(null); setAlreadyExists(false) }}
@@ -214,23 +214,6 @@ export default function ImportInvoicePage() {
       {/* Direct Search Form */}
       {searchTab === 'direct' && (
         <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
-          <div className="flex gap-3 mb-4">
-            {(['reference', 'id'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => { setMode(m); setPreview(null); setAlreadyExists(false) }}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  mode === m
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'bg-muted text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {m === 'reference' ? 'Por Referencia' : 'Por ID'}
-              </button>
-            ))}
-          </div>
-
           <form onSubmit={handleSearch} className="flex gap-3">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -239,7 +222,7 @@ export default function ImportInvoicePage() {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={mode === 'reference' ? 'Ej: FAC-2024-001' : 'ID interno de FinanzaPro'}
+                placeholder="Ej: FAC-2024-001"
                 className="w-full pl-10 pr-4 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
               />
             </div>

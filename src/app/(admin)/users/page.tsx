@@ -24,6 +24,9 @@ const firebaseConfig = {
 }
 
 function formatEmailOrUsername(email: string) {
+  if (email.endsWith('@saldoentregasmp.com')) {
+    return email.replace('@saldoentregasmp.com', '')
+  }
   if (email.endsWith('@saldoentregasmp')) {
     return email.replace('@saldoentregasmp', '')
   }
@@ -81,6 +84,7 @@ export default function UsersPage() {
         (u) =>
           u.displayName.toLowerCase().includes(s) ||
           u.email.toLowerCase().includes(s) ||
+          (u.email.endsWith('@saldoentregasmp.com') && u.email.replace('@saldoentregasmp.com', '').toLowerCase().includes(s)) ||
           (u.email.endsWith('@saldoentregasmp') && u.email.replace('@saldoentregasmp', '').toLowerCase().includes(s)) ||
           (u.phoneNumber && u.phoneNumber.includes(s))
       )
@@ -119,7 +123,7 @@ export default function UsersPage() {
       // Map email to virtual email if no '@' domain is present
       const formattedEmail = email.includes('@')
         ? email.trim()
-        : `${email.trim()}@saldoentregasmp`
+        : `${email.trim()}@saldoentregasmp.com`
 
       // 2. Create the user in Auth
       const creds = await createUserWithEmailAndPassword(secondaryAuth, formattedEmail, password)

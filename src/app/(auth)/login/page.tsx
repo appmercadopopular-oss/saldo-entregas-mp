@@ -17,9 +17,12 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     try {
-      const formattedEmail = usernameOrEmail.includes('@')
-        ? usernameOrEmail.trim()
-        : `${usernameOrEmail.trim()}@saldoentregasmp`
+      let formattedEmail = usernameOrEmail.trim()
+      if (!formattedEmail.includes('@')) {
+        formattedEmail = `${formattedEmail}@saldoentregasmp.com`
+      } else if (formattedEmail.endsWith('@saldoentregasmp')) {
+        formattedEmail = `${formattedEmail}.com`
+      }
 
       const cred = await signIn(formattedEmail, password)
       const profile = await getUserDoc(cred.user.uid)

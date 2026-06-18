@@ -10,7 +10,7 @@ import { formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
   Users, Search, Plus, Shield, Truck, Power,
-  X, Check, AlertCircle, Loader2, Mail, User, Phone, Key, Pencil
+  X, Check, AlertCircle, Loader2, Mail, User, Phone, Key
 } from 'lucide-react'
 
 // Firebase configuration for secondary initialization
@@ -41,16 +41,6 @@ export default function UsersPage() {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
-
-  // Edit states
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const [editingUser, setEditingUser] = useState<UserDoc | null>(null)
-  const [editName, setEditName] = useState('')
-  const [editEmailOrUser, setEditEmailOrUser] = useState('')
-  const [editPassword, setEditPassword] = useState('')
-  const [editRole, setEditRole] = useState<UserRole>('driver')
-  const [editPhoneNumber, setEditPhoneNumber] = useState('')
-  const [updating, setUpdating] = useState(false)
 
   // Form states
   const [name, setName] = useState('')
@@ -184,76 +174,6 @@ export default function UsersPage() {
       toast.error(msg)
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  function handleOpenEditModal(user: UserDoc) {
-    setEditingUser(user)
-    setEditName(user.displayName)
-    setEditEmailOrUser(formatEmailOrUsername(user.email))
-    setEditRole(user.role)
-    setEditPhoneNumber(user.phoneNumber || '')
-    setEditPassword('')
-    setIsEditModalOpen(true)
-  }
-
-  async function handleUpdateUser(e: React.FormEvent) {
-    e.preventDefault()
-    if (!editingUser) return
-    if (!editName.trim()) return
-    setUpdating(true)
-
-    try {
-      const { auth } = await import('@/lib/firebase/config')
-      const token = await auth.currentUser?.getIdToken()
-      
-      if (!token) {
-        toast.error('No se pudo verificar tu sesión. Por favor reingresa.')
-        setUpdating(false)
-        return
-      }
-
-      const response = await fetch('/api/admin/users/update', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          uid: editingUser.uid,
-          displayName: editName.trim(),
-          phoneNumber: editPhoneNumber.trim(),
-          role: editRole,
-          ...(editPassword.trim() && { password: editPassword })
-        })
-      })
-
-      const data = await response.json()
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Error al actualizar usuario')
-      }
-
-      toast.success('Usuario actualizado con éxito')
-      setIsEditModalOpen(false)
-
-      // Optimistic UI update
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.uid === editingUser.uid
-            ? {
-                ...u,
-                displayName: editName.trim(),
-                phoneNumber: editPhoneNumber.trim() || undefined,
-                role: editRole
-              }
-            : u
-        )
-      )
-    } catch (err: any) {
-      console.error(err)
-      toast.error(err.message || 'Error al actualizar el usuario')
-    } finally {
-      setUpdating(false)
     }
   }
 
@@ -392,26 +312,17 @@ export default function UsersPage() {
                       {formatDate(user.createdAt)}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <div className="flex justify-center items-center gap-2">
-                        <button
-                          onClick={() => handleOpenEditModal(user)}
-                          className="p-2 rounded-lg border border-border text-foreground hover:bg-muted dark:border-muted/30 transition-all"
-                          title="Editar usuario"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleToggleStatus(user)}
-                          className={`p-2 rounded-lg border transition-all ${
-                            user.isActive
-                              ? 'border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/30'
-                              : 'border-green-200 text-green-600 hover:bg-green-50 dark:border-green-900/30'
-                          }`}
-                          title={user.isActive ? 'Desactivar usuario' : 'Activar usuario'}
-                        >
-                          <Power className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleToggleStatus(user)}
+                        className={`p-2 rounded-lg border transition-all ${
+                          user.isActive
+                            ? 'border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/30'
+                            : 'border-green-200 text-green-600 hover:bg-green-50 dark:border-green-900/30'
+                        }`}
+                        title={user.isActive ? 'Desactivar usuario' : 'Activar usuario'}
+                      >
+                        <Power className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -538,128 +449,6 @@ export default function UsersPage() {
                 >
                   {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                   {submitting ? 'Creando...' : 'Crear Usuario'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Edit User Modal */}
-      {isEditModalOpen && editingUser && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-enter">
-          <div className="bg-card rounded-xl border border-border w-full max-w-md shadow-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/20">
-              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
-                <User className="w-5 h-5 text-primary" />
-                Editar Personal
-              </h2>
-              <button
-                onClick={() => setIsEditModalOpen(false)}
-                className="w-8 h-8 rounded-lg hover:bg-muted transition-colors flex items-center justify-center text-muted-foreground"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
-              {/* Username / Email (Read Only) */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  {editingUser.role === 'driver' ? 'Nombre de Usuario' : 'Correo Electrónico'}
-                </label>
-                <div className="relative">
-                  {editingUser.role === 'driver' ? (
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-                  ) : (
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-                  )}
-                  <input
-                    type="text"
-                    disabled
-                    value={editEmailOrUser}
-                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-border bg-muted/50 text-muted-foreground text-sm cursor-not-allowed"
-                  />
-                </div>
-              </div>
-
-              {/* Full Name */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Nombre Completo *</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type="text"
-                    required
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="Ej. Juan Pérez"
-                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Phone Number */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Teléfono (Opcional)</label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type="text"
-                    value={editPhoneNumber}
-                    onChange={(e) => setEditPhoneNumber(e.target.value)}
-                    placeholder="+502 XXXXXXXX"
-                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Role select */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Rol Asignado</label>
-                <select
-                  value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as UserRole)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                >
-                  <option value="driver">Repartidor</option>
-                  <option value="admin">Administrador</option>
-                </select>
-              </div>
-
-              {/* Optional Password reset */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Nueva Contraseña (dejar en blanco para no cambiar)
-                </label>
-                <div className="relative">
-                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type="password"
-                    value={editPassword}
-                    onChange={(e) => setEditPassword(e.target.value)}
-                    placeholder="Escribe para reasignar contraseña"
-                    minLength={6}
-                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4 border-t border-border mt-6">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="flex-1 py-2.5 text-center text-sm font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-all"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={updating}
-                  className="flex-1 py-2.5 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-md"
-                >
-                  {updating && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {updating ? 'Guardando...' : 'Guardar Cambios'}
                 </button>
               </div>
             </form>

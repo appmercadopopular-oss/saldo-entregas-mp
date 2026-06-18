@@ -10,7 +10,7 @@ import { formatDate } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
   Users, Search, Plus, Shield, Truck, Power,
-  X, Check, AlertCircle, Loader2, Mail, User, Phone, Key
+  X, Check, AlertCircle, Loader2, Mail, User, Phone, Key, Pencil
 } from 'lucide-react'
 
 // Firebase configuration for secondary initialization
@@ -49,6 +49,13 @@ export default function UsersPage() {
   const [role, setRole] = useState<UserRole>('driver')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // Edit form states
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<UserDoc | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editPhoneNumber, setEditPhoneNumber] = useState('')
+  const [updating, setUpdating] = useState(false)
 
   async function loadUsers() {
     try {
@@ -174,6 +181,44 @@ export default function UsersPage() {
       toast.error(msg)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  function handleOpenEditModal(user: UserDoc) {
+    setEditingUser(user)
+    setEditName(user.displayName)
+    setEditPhoneNumber(user.phoneNumber || '')
+    setIsEditModalOpen(true)
+  }
+
+  async function handleUpdateUser(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingUser) return
+    if (!editName.trim()) {
+      toast.error('El nombre no puede estar vacío')
+      return
+    }
+    setUpdating(true)
+    try {
+      await upsertUserDoc(editingUser.uid, {
+        displayName: editName.trim(),
+        phoneNumber: editPhoneNumber.trim() || '',
+      })
+      toast.success('Usuario actualizado con éxito')
+      setIsEditModalOpen(false)
+      // Update local state
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.uid === editingUser.uid
+            ? { ...u, displayName: editName.trim(), phoneNumber: editPhoneNumber.trim() || undefined }
+            : u
+        )
+      )
+    } catch (err) {
+      console.error(err)
+      toast.error('Error al actualizar el usuario')
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -312,17 +357,26 @@ export default function UsersPage() {
                       {formatDate(user.createdAt)}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => handleToggleStatus(user)}
-                        className={`p-2 rounded-lg border transition-all ${
-                          user.isActive
-                            ? 'border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/30'
-                            : 'border-green-200 text-green-600 hover:bg-green-50 dark:border-green-900/30'
-                        }`}
-                        title={user.isActive ? 'Desactivar usuario' : 'Activar usuario'}
-                      >
-                        <Power className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleOpenEditModal(user)}
+                          className="p-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                          title="Editar usuario"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleToggleStatus(user)}
+                          className={`p-2 rounded-lg border transition-all ${
+                            user.isActive
+                              ? 'border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/30'
+                              : 'border-green-200 text-green-600 hover:bg-green-50 dark:border-green-900/30'
+                          }`}
+                          title={user.isActive ? 'Desactivar usuario' : 'Activar usuario'}
+                        >
+                          <Power className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -449,6 +503,92 @@ export default function UsersPage() {
                 >
                   {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                   {submitting ? 'Creando...' : 'Crear Usuario'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {isEditModalOpen && editingUser && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-enter">
+          <div className="bg-card rounded-xl border border-border w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/20">
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-primary" />
+                Editar Datos de Personal
+              </h2>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="w-8 h-8 rounded-lg hover:bg-muted transition-colors flex items-center justify-center text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
+              <div className="space-y-1.5 opacity-75">
+                <label className="text-xs font-medium text-muted-foreground">Usuario / Correo (Lectura)</label>
+                <div className="relative">
+                  {editingUser.role === 'driver' ? (
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  ) : (
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  )}
+                  <input
+                    type="text"
+                    disabled
+                    value={formatEmailOrUsername(editingUser.email)}
+                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-border bg-muted/50 text-muted-foreground text-sm cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Nombre Completo *</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Ej. Juan Pérez"
+                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Teléfono (Opcional)</label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={editPhoneNumber}
+                    onChange={(e) => setEditPhoneNumber(e.target.value)}
+                    placeholder="+502 XXXXXXXX"
+                    className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-border mt-6">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="flex-1 py-2.5 text-center text-sm font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="flex-1 py-2.5 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-md"
+                >
+                  {updating && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {updating ? 'Guardando...' : 'Guardar Cambios'}
                 </button>
               </div>
             </form>

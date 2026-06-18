@@ -391,8 +391,8 @@ export default function AdminOrderDetailPage() {
             <tr className="bg-gray-50 border-b border-gray-300 font-bold">
               <th className="py-1.5 px-2 border-r border-gray-300">Artículo</th>
               <th className="py-1.5 px-2 text-right border-r border-gray-300 w-16">Enviado</th>
-              <th className="py-1.5 px-2 text-center border-r border-gray-300 w-24">Devuelto (Lapicero)</th>
-              <th className="py-1.5 px-2 w-48">Excepción / Motivo (Lapicero)</th>
+              <th className="py-1.5 px-2 text-center border-r border-gray-300 w-24">Devuelto</th>
+              <th className="py-1.5 px-2 w-48">Excepción / Motivo</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-300">

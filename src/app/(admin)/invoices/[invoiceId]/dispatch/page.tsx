@@ -9,6 +9,7 @@ import { InvoiceDoc, InvoiceItemDoc, UserDoc } from '@/types'
 import { formatNumber, validateDispatchQuantity } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ArrowLeft, Truck, Package, User, Loader2, AlertCircle, CheckCircle2, Minus, Plus } from 'lucide-react'
+import { COSTA_RICA_DATA } from '@/lib/costaRica'
 
 type DispatchItem = {
   invoiceItem: InvoiceItemDoc
@@ -33,6 +34,31 @@ export default function DispatchPage() {
   const [distrito, setDistrito] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // Cascading lists helper
+  const selectedProvData = Object.values(COSTA_RICA_DATA).find(
+    (p) => p.nombre === provincia
+  )
+  const cantonesList = selectedProvData
+    ? Object.values(selectedProvData.cantones).map((c) => c.nombre).sort()
+    : []
+  const selectedCantonData = selectedProvData
+    ? Object.values(selectedProvData.cantones).find((c) => c.nombre === canton)
+    : undefined
+  const distritosList = selectedCantonData
+    ? Object.values(selectedCantonData.distritos).sort()
+    : []
+
+  const handleProvinciaChange = (val: string) => {
+    setProvincia(val)
+    setCanton('')
+    setDistrito('')
+  }
+
+  const handleCantonChange = (val: string) => {
+    setCanton(val)
+    setDistrito('')
+  }
 
   useEffect(() => {
     async function load() {
@@ -179,41 +205,45 @@ export default function DispatchPage() {
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Provincia *</label>
               <select
                 value={provincia}
-                onChange={(e) => setProvincia(e.target.value)}
+                onChange={(e) => handleProvinciaChange(e.target.value)}
                 required
                 className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
               >
                 <option value="">Seleccionar provincia...</option>
-                <option value="San José">San José</option>
-                <option value="Alajuela">Alajuela</option>
-                <option value="Cartago">Cartago</option>
-                <option value="Heredia">Heredia</option>
-                <option value="Guanacaste">Guanacaste</option>
-                <option value="Puntarenas">Puntarenas</option>
-                <option value="Limón">Limón</option>
+                {Object.values(COSTA_RICA_DATA).map((p) => (
+                  <option key={p.nombre} value={p.nombre}>{p.nombre}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Cantón *</label>
-              <input
-                type="text"
+              <select
                 value={canton}
-                onChange={(e) => setCanton(e.target.value)}
-                placeholder="Ej. Escazú"
+                onChange={(e) => handleCantonChange(e.target.value)}
                 required
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              />
+                disabled={!provincia}
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <option value="">Seleccionar cantón...</option>
+                {cantonesList.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Distrito *</label>
-              <input
-                type="text"
+              <select
                 value={distrito}
                 onChange={(e) => setDistrito(e.target.value)}
-                placeholder="Ej. San Rafael"
                 required
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              />
+                disabled={!canton}
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <option value="">Seleccionar distrito...</option>
+                {distritosList.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
             </div>
             <div className="sm:col-span-2">
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Notas para el Repartidor</label>

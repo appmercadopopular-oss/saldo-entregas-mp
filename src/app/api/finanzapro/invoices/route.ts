@@ -102,8 +102,8 @@ export async function GET(request: NextRequest) {
       return true
     })
 
-    // Ordenar por fecha descendente
-    invoices.sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate))
+    // Ordenar por número de referencia
+    invoices.sort((a, b) => (a.internalReference || '').localeCompare(b.internalReference || ''))
 
     // 7. Verificar en Firestore cuáles ya han sido importadas
     const refs = invoices.map(inv => inv.internalReference).filter(Boolean)

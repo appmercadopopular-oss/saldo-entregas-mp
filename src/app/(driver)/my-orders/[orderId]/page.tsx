@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { doc, getDoc } from 'firebase/firestore'
@@ -31,6 +31,12 @@ export default function DriverOrderDetailPage() {
   const [saving, setSaving] = useState(false)
   const [expandedItems, setExpandedItems] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+
+  // Signature canvas states & refs
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [isSigned, setIsSigned] = useState(false)
+  const drawingRef = useRef(false)
+  const lastPosRef = useRef({ x: 0, y: 0 })
 
   async function handleStartRoute() {
     if (!order) return
@@ -65,6 +71,112 @@ export default function DriverOrderDetailPage() {
     load()
   }, [orderId])
 
+  // Canvas drawing event handlers
+  const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    
+    if ('touches' in e) {
+      if (e.touches.length === 0) return null
+      const touch = e.touches[0]
+      return {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
+      }
+    } else {
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      }
+    }
+  }
+
+  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    if (e.cancelable) e.preventDefault()
+    const pos = getCoordinates(e)
+    if (!pos) return
+    drawingRef.current = true
+    lastPosRef.current = pos
+  }
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!drawingRef.current) return
+    if (e.cancelable) e.preventDefault()
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    const pos = getCoordinates(e)
+    if (!canvas || !ctx || !pos) return
+
+    ctx.beginPath()
+    ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y)
+    ctx.lineTo(pos.x, pos.y)
+    ctx.strokeStyle = '#000000'
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    ctx.stroke()
+
+    lastPosRef.current = pos
+    if (!isSigned) setIsSigned(true)
+  }
+
+  const stopDrawing = () => {
+    drawingRef.current = false
+  }
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext('2d')
+    if (!canvas || !ctx) return
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    setIsSigned(false)
+  }
+
+  // Canvas Sizing and Auto-Resize/Rotate handling
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const resizeCanvas = () => {
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+
+      // Save current content to avoid losing drawing on rotate/resize
+      const tempCanvas = document.createElement('canvas')
+      tempCanvas.width = canvas.width
+      tempCanvas.height = canvas.height
+      const tempCtx = tempCanvas.getContext('2d')
+      if (tempCtx) {
+        tempCtx.drawImage(canvas, 0, 0)
+      }
+
+      canvas.width = canvas.offsetWidth
+      canvas.height = canvas.offsetHeight
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(tempCanvas, 0, 0)
+    }
+
+    // Delay initialization slightly to ensure offsetWidth is calculated correctly
+    const timer = setTimeout(() => {
+      canvas.width = canvas.offsetWidth
+      canvas.height = canvas.offsetHeight
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+      }
+    }, 50)
+
+    window.addEventListener('resize', resizeCanvas)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('resize', resizeCanvas)
+    }
+  }, [order]) // Re-run once when order finishes loading
+
   function updateConfirmation(invoiceItemId: string, confirmed: number) {
     setConfirmations((prev) =>
       prev.map((c) => {
@@ -84,20 +196,28 @@ export default function DriverOrderDetailPage() {
 
   const hasExceptions = confirmations.some((c) => c.hasException)
   const missingReasons = confirmations.some((c) => c.hasException && !c.returnReason.trim())
-  const canSubmit = !missingReasons
+  const canSubmit = !missingReasons && isSigned
 
   async function handleConfirm() {
     if (!canSubmit || !order) return
     setSaving(true)
+    
+    let signatureDataUrl = ''
+    const canvas = canvasRef.current
+    if (canvas && isSigned) {
+      signatureDataUrl = canvas.toDataURL('image/png')
+    }
+
     try {
       await confirmDelivery({
         orderId: order.id,
         driverNotes,
+        signatureDataUrl,
         items: confirmations,
       })
       toast.success(
         hasExceptions
-          ? 'Entrega confirmada con excepciones registradas'
+          ? 'Entrega confirmada con excepciones registrada'
           : '¡Entrega confirmada exitosamente!'
       )
       router.replace('/my-orders')
@@ -296,6 +416,43 @@ export default function DriverOrderDetailPage() {
         </div>
       ) : (
         <>
+          {/* Client signature canvas */}
+          <div className="bg-card rounded-xl border border-border p-5 shadow-sm space-y-3">
+            <label className="text-sm font-bold text-foreground flex items-center gap-1.5">
+              Firma de Conformidad del Cliente *
+            </label>
+            <p className="text-xs text-muted-foreground">
+              El cliente debe firmar con el dedo o lápiz táctil en el recuadro para confirmar la recepción.
+            </p>
+            <div className="border border-dashed border-border rounded-lg overflow-hidden bg-white relative h-48 touch-none">
+              <canvas
+                ref={canvasRef}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+                onTouchStart={startDrawing}
+                onTouchMove={draw}
+                onTouchEnd={stopDrawing}
+                className="w-full h-full cursor-crosshair block bg-white"
+              />
+              {!isSigned && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-muted-foreground/30 text-sm select-none">
+                  Firme aquí
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={clearCanvas}
+                className="px-3 py-1.5 border border-border rounded-lg text-xs font-semibold hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
+              >
+                Limpiar Firma
+              </button>
+            </div>
+          </div>
+
           {/* Driver notes */}
           <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
             <label className="text-sm font-medium text-foreground block mb-2">
@@ -316,6 +473,15 @@ export default function DriverOrderDetailPage() {
               <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-red-700 dark:text-red-400">
                 Debes seleccionar un <strong>motivo de devolución</strong> para todos los ítems con cantidad reducida.
+              </p>
+            </div>
+          )}
+
+          {!isSigned && (
+            <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                Se requiere la <strong>firma del cliente</strong> para poder confirmar la entrega.
               </p>
             </div>
           )}

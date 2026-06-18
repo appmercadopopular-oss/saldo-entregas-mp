@@ -11,6 +11,8 @@ import {
   Package,
   LogOut,
   ChevronRight,
+  Calendar,
+  AlertCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { signOut } from '@/lib/firebase/auth'
@@ -19,7 +21,9 @@ import { useAuth } from '@/contexts/AuthContext'
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/invoices', icon: FileText, label: 'Facturas' },
+  { href: '/pending-balances', icon: AlertCircle, label: 'Saldos Pendientes' },
   { href: '/delivery-orders', icon: Truck, label: 'Despachos' },
+  { href: '/calendar', icon: Calendar, label: 'Calendario' },
   { href: '/users', icon: Users, label: 'Usuarios' },
 ]
 

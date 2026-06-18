@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getAllInvoices, updateInvoicesPriorities } from '@/lib/firebase/firestore'
 import { InvoiceDoc, InvoiceStatus, INVOICE_STATUS_LABELS } from '@/types'
-import { formatDate, formatRelative } from '@/lib/utils'
+import { formatDate, formatRelative, toDate } from '@/lib/utils'
 import { Plus, Search, FileText, Filter, Package, ChevronUp, ChevronDown, ChevronsUp } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -78,7 +78,7 @@ export default function InvoicesPage() {
   }
 
   useEffect(() => {
-    let result = invoices
+    let result = [...invoices]
     if (statusFilter !== 'all') {
       result = result.filter((i) => i.status === statusFilter)
     }
@@ -89,6 +89,17 @@ export default function InvoicesPage() {
           i.internalReference.toLowerCase().includes(s) ||
           i.clientName.toLowerCase().includes(s)
       )
+    }
+    // Lógica de ordenamiento
+    if (statusFilter === 'open' || statusFilter === 'in_progress') {
+      result.sort((a, b) => {
+        const pA = a.priority ?? Number.MAX_SAFE_INTEGER
+        const pB = b.priority ?? Number.MAX_SAFE_INTEGER
+        if (pA !== pB) return pA - pB
+        return toDate(a.importedAt).getTime() - toDate(b.importedAt).getTime()
+      })
+    } else {
+      result.sort((a, b) => (a.internalReference || '').localeCompare(b.internalReference || ''))
     }
     setFiltered(result)
   }, [search, statusFilter, invoices])

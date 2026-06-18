@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { getAllDeliveryOrders, updateDeliveryOrdersPriorities } from '@/lib/firebase/firestore'
 import { DeliveryOrderDoc, OrderStatus, ORDER_STATUS_LABELS } from '@/types'
-import { formatDateTime, formatRelative } from '@/lib/utils'
+import { formatDateTime, formatRelative, toDate } from '@/lib/utils'
 import { Truck, Search, AlertTriangle, CheckCircle2, Clock, Package, MapPin, ChevronDown, ChevronUp, ChevronsUp } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -89,7 +89,7 @@ export default function DeliveryOrdersPage() {
   }
 
   useEffect(() => {
-    let result = orders
+    let result = [...orders]
     if (statusFilter !== 'all') result = result.filter((o) => o.status === statusFilter)
     if (search.trim()) {
       const s = search.toLowerCase()
@@ -99,6 +99,17 @@ export default function DeliveryOrdersPage() {
           o.clientName.toLowerCase().includes(s) ||
           o.assignedDriverName.toLowerCase().includes(s)
       )
+    }
+    // Lógica de ordenamiento
+    if (statusFilter === 'pending' || statusFilter === 'in_transit') {
+      result.sort((a, b) => {
+        const pA = a.priority ?? Number.MAX_SAFE_INTEGER
+        const pB = b.priority ?? Number.MAX_SAFE_INTEGER
+        if (pA !== pB) return pA - pB
+        return toDate(a.createdAt).getTime() - toDate(b.createdAt).getTime()
+      })
+    } else {
+      result.sort((a, b) => (a.invoiceReference || '').localeCompare(b.invoiceReference || ''))
     }
     setFiltered(result)
   }, [search, statusFilter, orders])

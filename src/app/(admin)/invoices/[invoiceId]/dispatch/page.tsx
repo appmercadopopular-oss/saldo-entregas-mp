@@ -32,6 +32,8 @@ export default function DispatchPage() {
   const [provincia, setProvincia] = useState('')
   const [canton, setCanton] = useState('')
   const [distrito, setDistrito] = useState('')
+  const [scheduledDate, setScheduledDate] = useState('')
+  const [scheduledTime, setScheduledTime] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -126,6 +128,8 @@ export default function DispatchPage() {
           provincia,
           canton,
           distrito,
+          scheduledDate: scheduledDate || undefined,
+          scheduledTime: scheduledTime || undefined,
           items: selectedItems.map((d) => ({
             invoiceItemId: d.invoiceItem.id,
             sku: d.invoiceItem.sku,
@@ -198,6 +202,24 @@ export default function DispatchPage() {
                 value={deliveryAddress}
                 onChange={(e) => setDeliveryAddress(e.target.value)}
                 placeholder="Dirección del sitio..."
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Fecha Programada (Entrega)</label>
+              <input
+                type="date"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Hora Programada (Entrega)</label>
+              <input
+                type="time"
+                value={scheduledTime}
+                onChange={(e) => setScheduledTime(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
               />
             </div>

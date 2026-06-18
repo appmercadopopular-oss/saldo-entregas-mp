@@ -72,7 +72,7 @@ export default function DashboardPage() {
   const withExceptions = orders.filter((o) => o.status === 'delivered_with_exceptions')
 
   const recentOrders = [...orders]
-    .sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis())
+    .sort((a, b) => toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime())
     .slice(0, 5)
 
   if (loading) {

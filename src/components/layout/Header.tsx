@@ -9,6 +9,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/invoices': 'Facturas',
   '/invoices/import': 'Importar Factura',
   '/delivery-orders': 'Órdenes de Despacho',
+  '/calendar': 'Calendario de Despachos',
+  '/pending-balances': 'Saldos Pendientes',
   '/users': 'Gestión de Usuarios',
 }
 

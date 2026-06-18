@@ -458,8 +458,8 @@ export default function AdminOrderDetailPage() {
         </table>
       </div>
 
-      {/* Notes block (Screen Only) */}
-      {(order.adminNotes || order.driverNotes) && (
+      {/* Signature & Comments Block (Screen Only) */}
+      {(order.adminNotes || order.driverNotes || order.signatureDataUrl) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:hidden">
           {order.adminNotes && (
             <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
@@ -471,31 +471,63 @@ export default function AdminOrderDetailPage() {
               </p>
             </div>
           )}
-          {order.driverNotes && (
-            <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
-              <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                Comentarios del Repartidor
-              </h4>
-              <p className="text-sm text-foreground italic bg-muted/40 p-3 rounded-lg border border-border/50">
-                &ldquo;{order.driverNotes}&rdquo;
-              </p>
-            </div>
-          )}
+          
+          <div className="space-y-4">
+            {order.driverNotes && (
+              <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                  Comentarios del Repartidor
+                </h4>
+                <p className="text-sm text-foreground italic bg-muted/40 p-3 rounded-lg border border-border/50">
+                  &ldquo;{order.driverNotes}&rdquo;
+                </p>
+              </div>
+            )}
+            
+            {order.signatureDataUrl && (
+              <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                  Firma de Conformidad del Cliente
+                </h4>
+                <div className="mt-2 bg-white rounded-lg border border-border overflow-hidden flex items-center justify-center p-2 h-36">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={order.signatureDataUrl}
+                    alt="Firma del cliente"
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* Printable signature fields */}
       <div className="print-signature-block">
         <div className="flex flex-col items-center">
-          <div className="w-56 border-b border-black mt-8"></div>
+          {order.signatureDataUrl ? (
+            <div className="h-16 w-56 flex items-center justify-center border border-gray-300 p-1 bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={order.signatureDataUrl}
+                alt="Firma del cliente"
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+          ) : (
+            <div className="w-56 border-b border-black mt-8"></div>
+          )}
           <div className="text-[10px] font-bold mt-1 text-center">Firma de Recibido del Cliente</div>
           <div className="text-[9px] text-gray-500 mt-0.5 text-center">
             Nombre y DPI/Identificación
           </div>
-          <div className="text-[9px] text-gray-500 text-center">Fecha y Hora: ____/____/________  ____:____</div>
+          <div className="text-[9px] text-gray-500 text-center">
+            {order.deliveredAt ? `Entregado: ${formatDateTime(order.deliveredAt)}` : 'Fecha y Hora: ____/____/________  ____:____'}
+          </div>
         </div>
 
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center justify-end">
           <div className="w-56 border-b border-black mt-8"></div>
           <div className="text-[10px] font-bold mt-1 text-center">Firma del Repartidor</div>
           <div className="text-[9px] text-gray-500 mt-0.5 text-center">

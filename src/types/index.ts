@@ -177,6 +177,12 @@ export interface DeliveryOrderDoc {
   distrito?: string
   /** Orden de prioridad numérica (1 = mayor prioridad) */
   priority?: number
+  /** Fecha programada de entrega (YYYY-MM-DD) */
+  scheduledDate?: string
+  /** Hora programada de entrega (HH:MM) */
+  scheduledTime?: string
+  /** Firma digital del cliente al recibir (Base64 Data URL) */
+  signatureDataUrl?: string
 }
 
 // -------------------------------------------------------------
@@ -246,6 +252,8 @@ export interface CreateDeliveryOrderPayload {
   provincia?: string
   canton?: string
   distrito?: string
+  scheduledDate?: string
+  scheduledTime?: string
   items: Array<{
     invoiceItemId: string
     sku: string
@@ -259,6 +267,7 @@ export interface CreateDeliveryOrderPayload {
 export interface ConfirmDeliveryPayload {
   orderId: string
   driverNotes?: string
+  signatureDataUrl?: string
   items: Array<{
     invoiceItemId: string
     quantityConfirmed: number

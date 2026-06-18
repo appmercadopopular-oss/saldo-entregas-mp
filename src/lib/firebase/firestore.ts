@@ -22,6 +22,7 @@ import {
   QueryConstraint,
 } from 'firebase/firestore'
 import { db } from './config'
+import { toDate } from '@/lib/utils'
 import type {
   InvoiceDoc,
   InvoiceItemDoc,
@@ -62,7 +63,7 @@ export async function getOpenInvoices(): Promise<InvoiceDoc[]> {
     const pA = a.priority ?? Number.MAX_SAFE_INTEGER
     const pB = b.priority ?? Number.MAX_SAFE_INTEGER
     if (pA !== pB) return pA - pB
-    return (a.importedAt?.toMillis() ?? 0) - (b.importedAt?.toMillis() ?? 0)
+    return toDate(a.importedAt).getTime() - toDate(b.importedAt).getTime()
   })
 }
 
@@ -83,10 +84,10 @@ export async function getAllInvoices(
       const pA = a.priority ?? Number.MAX_SAFE_INTEGER
       const pB = b.priority ?? Number.MAX_SAFE_INTEGER
       if (pA !== pB) return pA - pB
-      return (a.importedAt?.toMillis() ?? 0) - (b.importedAt?.toMillis() ?? 0)
+      return toDate(a.importedAt).getTime() - toDate(b.importedAt).getTime()
     }
     // Por defecto, orden inverso de importación
-    return (b.importedAt?.toMillis() ?? 0) - (a.importedAt?.toMillis() ?? 0)
+    return toDate(b.importedAt).getTime() - toDate(a.importedAt).getTime()
   })
 }
 
@@ -235,6 +236,20 @@ export async function createDeliveryOrder(
   }
 
   await runTransaction(db, async (tx) => {
+    // 0. Verificar si la factura existe y no está completada/cancelada
+    const invoiceRef = doc(db, 'invoices', payload.invoiceId)
+    const invoiceSnap = await tx.get(invoiceRef)
+    if (!invoiceSnap.exists()) {
+      throw new Error('Factura no encontrada')
+    }
+    const invoiceData = invoiceSnap.data() as InvoiceDoc
+    if (invoiceData.status === 'completed' || invoiceData.isFullyDelivered) {
+      throw new Error('Esta factura ya está completamente entregada y no puede generar nuevos despachos.')
+    }
+    if (invoiceData.status === 'cancelled') {
+      throw new Error('Esta factura está cancelada y no puede generar nuevos despachos.')
+    }
+
     // 1. Verificar saldos pendientes para cada ítem
     const itemRefs = payload.items.map((item) =>
       doc(db, 'invoices', payload.invoiceId, 'items', item.invoiceItemId)
@@ -288,6 +303,8 @@ export async function createDeliveryOrder(
       canton: payload.canton,
       distrito: payload.distrito,
       priority: nextPriority,
+      scheduledDate: payload.scheduledDate,
+      scheduledTime: payload.scheduledTime,
     }
 
     // 3. Crear la orden en Firestore
@@ -296,7 +313,6 @@ export async function createDeliveryOrder(
     tx.set(orderRef, newOrder)
 
     // 4. Actualizar el estado de la factura a 'in_progress'
-    const invoiceRef = doc(db, 'invoices', payload.invoiceId)
     tx.update(invoiceRef, { status: 'in_progress' as InvoiceStatus })
   })
 
@@ -382,6 +398,7 @@ export async function confirmDelivery(
       items: updatedItems,
       deliveredAt: Timestamp.now(),
       driverNotes: payload.driverNotes,
+      signatureDataUrl: payload.signatureDataUrl || null,
     })
 
     // 5. Verificar si la factura queda completamente entregada
@@ -453,10 +470,10 @@ export async function getAllDeliveryOrders(
       const pA = a.priority ?? Number.MAX_SAFE_INTEGER
       const pB = b.priority ?? Number.MAX_SAFE_INTEGER
       if (pA !== pB) return pA - pB
-      return (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0)
+      return toDate(a.createdAt).getTime() - toDate(b.createdAt).getTime()
     }
     // Por defecto, orden inverso de creación
-    return (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)
+    return toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime()
   })
 }
 
@@ -495,7 +512,7 @@ export function subscribeToPendingDriverOrders(
       const pA = a.priority ?? Number.MAX_SAFE_INTEGER
       const pB = b.priority ?? Number.MAX_SAFE_INTEGER
       if (pA !== pB) return pA - pB
-      return (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0)
+      return toDate(a.createdAt).getTime() - toDate(b.createdAt).getTime()
     })
     callback(docs)
   })

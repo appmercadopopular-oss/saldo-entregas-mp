@@ -180,32 +180,52 @@ export async function fetchInvoicesByDate(
 export async function fetchInvoiceByReference(
   reference: string
 ): Promise<FinanzaProInvoice> {
-  const response = await finanzaProFetch<any>(
-    `/invoicing-service/v2/invoices?internalReference=${encodeURIComponent(reference)}&limit=1`
-  )
+  const possibleParams = ['internalReference', 'reference', 'number', 'invoiceNumber', 'q', 'search']
+  const refClean = reference.trim()
 
-  // Extrae los ítems adaptándose a múltiples estructuras posibles
-  let items: any[] = []
-  if (response) {
-    if (response.data !== undefined) {
-      items = response.data.items || response.data
-    } else if (response.items !== undefined) {
-      items = response.items
-    } else if (Array.isArray(response)) {
-      items = response
-    } else {
-      items = [response]
+  for (const paramName of possibleParams) {
+    try {
+      console.log(`[FinanzaPro Client] Probing search by reference with parameter '${paramName}' = '${refClean}'...`)
+      const response = await finanzaProFetch<any>(
+        `/invoicing-service/v2/invoices?${paramName}=${encodeURIComponent(refClean)}&limit=5`
+      )
+
+      let items: any[] = []
+      if (response) {
+        if (response.data !== undefined) {
+          items = response.data.items || response.data
+        } else if (response.items !== undefined) {
+          items = response.items
+        } else if (Array.isArray(response)) {
+          items = response
+        } else {
+          items = [response]
+        }
+      }
+
+      if (items && Array.isArray(items)) {
+        const match = items.find(
+          (inv: any) =>
+            inv &&
+            (String(inv.internalReference || '').trim() === refClean ||
+             String(inv.number || '').trim() === refClean ||
+             String(inv.id || '').trim() === refClean)
+        )
+
+        if (match) {
+          console.log(`[FinanzaPro Client] Match found using query parameter '${paramName}'!`)
+          return match
+        }
+      }
+    } catch (err) {
+      console.warn(`[FinanzaPro Client] Probe with parameter '${paramName}' failed:`, err)
     }
   }
 
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    throw new FinanzaProError(
-      `No se encontró ninguna factura con referencia: ${reference}`,
-      404
-    )
-  }
-
-  return items[0]
+  throw new FinanzaProError(
+    `No se encontró ninguna factura con referencia: ${reference}`,
+    404
+  )
 }
 
 // ─────────────────────────────────────────────────────────────

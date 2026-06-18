@@ -29,7 +29,7 @@ export interface UserDoc {
 // Colección: `invoices`
 // -------------------------------------------------------------
 
-export type InvoiceStatus = 'open' | 'completed' | 'cancelled'
+export type InvoiceStatus = 'open' | 'in_progress' | 'completed' | 'cancelled'
 
 export interface InvoiceDoc {
   /** ID de documento en Firestore (auto-generado) */
@@ -169,6 +169,10 @@ export interface DeliveryOrderDoc {
   driverNotes?: string
   /** Número secuencial legible (ej. "OD-2024-042") */
   orderNumber?: string
+  /** Campos de ubicación de entrega */
+  provincia?: string
+  canton?: string
+  distrito?: string
 }
 
 // -------------------------------------------------------------
@@ -235,6 +239,9 @@ export interface CreateDeliveryOrderPayload {
   assignedDriverId: string
   assignedDriverName: string
   adminNotes?: string
+  provincia?: string
+  canton?: string
+  distrito?: string
   items: Array<{
     invoiceItemId: string
     sku: string
@@ -280,6 +287,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 
 export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   open: 'Abierta',
+  in_progress: 'En Proceso',
   completed: 'Completada',
   cancelled: 'Cancelada',
 }

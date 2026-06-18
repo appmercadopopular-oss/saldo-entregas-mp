@@ -9,6 +9,7 @@ import { Plus, Search, FileText, Filter, Package } from 'lucide-react'
 
 const STATUS_STYLES: Record<InvoiceStatus, string> = {
   open: 'badge-info',
+  in_progress: 'badge-warning',
   completed: 'badge-success',
   cancelled: 'badge-destructive',
 }
@@ -49,7 +50,7 @@ export default function InvoicesPage() {
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <div className="flex gap-3 flex-wrap">
-          {(['all', 'open', 'completed', 'cancelled'] as const).map((s) => (
+          {(['all', 'open', 'in_progress', 'completed', 'cancelled'] as const).map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}

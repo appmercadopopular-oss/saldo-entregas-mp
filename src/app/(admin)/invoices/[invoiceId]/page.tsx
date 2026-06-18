@@ -67,10 +67,13 @@ export default function InvoiceDetailPage() {
   const totalPending = items.reduce((s, i) => s + i.quantityPending, 0)
   const overallProgress = deliveryProgress(totalDelivered, totalInvoiced)
   const completedItems = items.filter((i) => i.isCompleted).length
-  const canDispatch = invoice.status === 'open' && items.some((i) => i.quantityPending > 0)
+  const canDispatch = (invoice.status === 'open' || invoice.status === 'in_progress') && items.some((i) => i.quantityPending > 0)
 
   const STATUS_STYLES: Record<string, string> = {
-    open: 'badge-info', completed: 'badge-success', cancelled: 'badge-destructive'
+    open: 'badge-info',
+    in_progress: 'badge-warning',
+    completed: 'badge-success',
+    cancelled: 'badge-destructive'
   }
   const ORDER_STATUS_STYLES: Record<string, string> = {
     pending: 'badge-warning', in_transit: 'badge-info',

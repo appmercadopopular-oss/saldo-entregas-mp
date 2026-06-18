@@ -54,7 +54,7 @@ const usersRef = () => collection(db, 'users')
 export async function getOpenInvoices(): Promise<InvoiceDoc[]> {
   const q = query(
     invoicesRef(),
-    where('status', '==', 'open'),
+    where('status', 'in', ['open', 'in_progress']),
     orderBy('importedAt', 'desc')
   )
   const snap = await getDocs(q)
@@ -194,7 +194,11 @@ export async function createDeliveryOrder(
       }
       const itemData = snap.data() as InvoiceItemDoc
       const requested = payload.items[i].quantityDispatched
-      if (requested > itemData.quantityPending) {
+
+      const roundedRequested = Math.round(requested * 100) / 100
+      const roundedPending = Math.round(itemData.quantityPending * 100) / 100
+
+      if (roundedRequested > roundedPending) {
         throw new Error(
           `Cantidad solicitada (${requested}) supera el saldo pendiente (${itemData.quantityPending}) para: ${itemData.description}`
         )
@@ -226,12 +230,19 @@ export async function createDeliveryOrder(
       status: 'pending',
       items: orderItems,
       adminNotes: payload.adminNotes,
+      provincia: payload.provincia,
+      canton: payload.canton,
+      distrito: payload.distrito,
     }
 
     // 3. Crear la orden en Firestore
     const orderRef = doc(collection(db, 'delivery_orders'))
     newOrderId = orderRef.id
     tx.set(orderRef, newOrder)
+
+    // 4. Actualizar el estado de la factura a 'in_progress'
+    const invoiceRef = doc(db, 'invoices', payload.invoiceId)
+    tx.update(invoiceRef, { status: 'in_progress' as InvoiceStatus })
   })
 
   return newOrderId
@@ -265,14 +276,17 @@ export async function confirmDelivery(
         (p) => p.invoiceItemId === orderItem.invoiceItemId
       )
       const confirmed = confirmation?.quantityConfirmed ?? orderItem.quantityDispatched
-      const returned = orderItem.quantityDispatched - confirmed
+      
+      const roundedDispatched = Math.round(orderItem.quantityDispatched * 100) / 100
+      const roundedConfirmed = Math.round(confirmed * 100) / 100
+      const returned = Math.round((roundedDispatched - roundedConfirmed) * 100) / 100
       const hasException = returned > 0
 
       if (hasException) hasAnyException = true
 
       return {
         ...orderItem,
-        quantityConfirmed: confirmed,
+        quantityConfirmed: roundedConfirmed,
         quantityReturned: returned,
         hasException,
         returnReason: confirmation?.returnReason,
@@ -293,8 +307,8 @@ export async function confirmDelivery(
 
       const itemData = snap.data() as InvoiceItemDoc
       const confirmedQty = updatedItems[i].quantityConfirmed
-      const newDelivered = itemData.quantityDelivered + confirmedQty
-      const newPending = itemData.quantityInvoiced - newDelivered
+      const newDelivered = Math.round((itemData.quantityDelivered + confirmedQty) * 100) / 100
+      const newPending = Math.round((itemData.quantityInvoiced - newDelivered) * 100) / 100
 
       tx.update(invoiceItemRefs[i], {
         quantityDelivered: newDelivered,
@@ -322,7 +336,7 @@ export async function confirmDelivery(
 
 /**
  * Verifica si todos los ítems de una factura están completados
- * y actualiza su estado a 'completed' si es así.
+ * y actualiza su estado a 'completed' o 'in_progress' según corresponda.
  * Se llama dentro de una transacción existente.
  */
 async function checkAndCloseInvoice(
@@ -337,6 +351,11 @@ async function checkAndCloseInvoice(
     tx.update(doc(db, 'invoices', invoiceId), {
       status: 'completed' as InvoiceStatus,
       isFullyDelivered: true,
+    })
+  } else {
+    tx.update(doc(db, 'invoices', invoiceId), {
+      status: 'in_progress' as InvoiceStatus,
+      isFullyDelivered: false,
     })
   }
 }
@@ -418,14 +437,44 @@ export function subscribeToPendingDriverOrders(
  * Cancela una orden (solo si está en estado 'pending').
  */
 export async function cancelDeliveryOrder(orderId: string): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const orderRef = doc(db, 'delivery_orders', orderId)
+    const snap = await tx.get(orderRef)
+    if (!snap.exists()) throw new Error('Orden no encontrada')
+    const order = snap.data() as DeliveryOrderDoc
+    if (order.status !== 'pending') {
+      throw new Error('Solo se pueden cancelar órdenes en estado Pendiente')
+    }
+    tx.update(orderRef, { status: 'cancelled' as OrderStatus })
+
+    // Verificar si quedan otras órdenes activas (no canceladas) para esta factura
+    const q = query(
+      collection(db, 'delivery_orders'),
+      where('invoiceId', '==', order.invoiceId)
+    )
+    const ordersSnap = await getDocs(q)
+    const activeOrders = ordersSnap.docs.filter(
+      (d) => d.id !== orderId && d.data().status !== 'cancelled'
+    )
+
+    if (activeOrders.length === 0) {
+      // Revertir estado a 'open'
+      tx.update(doc(db, 'invoices', order.invoiceId), {
+        status: 'open' as InvoiceStatus,
+      })
+    }
+  })
+}
+
+/**
+ * Actualiza el estado de una orden de despacho (ej. marcar 'in_transit').
+ */
+export async function updateDeliveryOrderStatus(
+  orderId: string,
+  status: OrderStatus
+): Promise<void> {
   const orderRef = doc(db, 'delivery_orders', orderId)
-  const snap = await getDoc(orderRef)
-  if (!snap.exists()) throw new Error('Orden no encontrada')
-  const order = snap.data() as DeliveryOrderDoc
-  if (order.status !== 'pending') {
-    throw new Error('Solo se pueden cancelar órdenes en estado Pendiente')
-  }
-  await updateDoc(orderRef, { status: 'cancelled' as OrderStatus })
+  await updateDoc(orderRef, { status })
 }
 
 // ─────────────────────────────────────────────────────────────

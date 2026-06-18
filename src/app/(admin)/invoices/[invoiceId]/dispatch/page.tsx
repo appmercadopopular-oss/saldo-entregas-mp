@@ -28,6 +28,9 @@ export default function DispatchPage() {
   const [selectedDriver, setSelectedDriver] = useState('')
   const [adminNotes, setAdminNotes] = useState('')
   const [deliveryAddress, setDeliveryAddress] = useState('')
+  const [provincia, setProvincia] = useState('')
+  const [canton, setCanton] = useState('')
+  const [distrito, setDistrito] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -76,7 +79,7 @@ export default function DispatchPage() {
 
   const selectedItems = dispatchItems.filter((d) => d.selected)
   const hasErrors = selectedItems.some((d) => !!d.error)
-  const canSubmit = selectedItems.length > 0 && !hasErrors && !!selectedDriver
+  const canSubmit = selectedItems.length > 0 && !hasErrors && !!selectedDriver && !!provincia && !!canton && !!distrito
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -94,6 +97,9 @@ export default function DispatchPage() {
           assignedDriverId: driver.uid,
           assignedDriverName: driver.displayName,
           adminNotes,
+          provincia,
+          canton,
+          distrito,
           items: selectedItems.map((d) => ({
             invoiceItemId: d.invoiceItem.id,
             sku: d.invoiceItem.sku,
@@ -166,6 +172,46 @@ export default function DispatchPage() {
                 value={deliveryAddress}
                 onChange={(e) => setDeliveryAddress(e.target.value)}
                 placeholder="Dirección del sitio..."
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Provincia *</label>
+              <select
+                value={provincia}
+                onChange={(e) => setProvincia(e.target.value)}
+                required
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              >
+                <option value="">Seleccionar provincia...</option>
+                <option value="San José">San José</option>
+                <option value="Alajuela">Alajuela</option>
+                <option value="Cartago">Cartago</option>
+                <option value="Heredia">Heredia</option>
+                <option value="Guanacaste">Guanacaste</option>
+                <option value="Puntarenas">Puntarenas</option>
+                <option value="Limón">Limón</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Cantón *</label>
+              <input
+                type="text"
+                value={canton}
+                onChange={(e) => setCanton(e.target.value)}
+                placeholder="Ej. Escazú"
+                required
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Distrito *</label>
+              <input
+                type="text"
+                value={distrito}
+                onChange={(e) => setDistrito(e.target.value)}
+                placeholder="Ej. San Rafael"
+                required
                 className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
               />
             </div>
@@ -242,7 +288,8 @@ export default function DispatchPage() {
                         type="number"
                         value={d.quantity}
                         onChange={(e) => setQty(d.invoiceItem.id, Number(e.target.value))}
-                        min={1}
+                        min={0.01}
+                        step="0.01"
                         max={d.invoiceItem.quantityPending}
                         className={`w-20 text-center py-1.5 rounded-lg border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all ${
                           d.error ? 'border-red-400 bg-red-50 dark:bg-red-900/20' : 'border-border bg-background'

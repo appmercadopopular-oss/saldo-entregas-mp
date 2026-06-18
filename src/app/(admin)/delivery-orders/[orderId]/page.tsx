@@ -99,10 +99,11 @@ export default function AdminOrderDetailPage() {
           body {
             background: white !important;
             color: black !important;
-            font-size: 12px !important;
+            font-size: 11px !important;
+            line-height: 1.2 !important;
           }
           /* Hide non-printable elements */
-          aside, header, nav, button, .print\\:hidden, .no-print, [role="button"] {
+          aside, header, nav, button, .print\\:hidden, .no-print, [role="button"], .print-hidden-card {
             display: none !important;
           }
           /* Expand printable area */
@@ -134,18 +135,18 @@ export default function AdminOrderDetailPage() {
           /* Print Layout */
           .print-voucher-header {
             display: block !important;
-            margin-bottom: 20px;
+            margin-bottom: 10px !important;
           }
           .print-signature-block {
             display: grid !important;
             grid-template-cols: 1fr 1fr !important;
-            gap: 40px !important;
-            margin-top: 60px !important;
+            gap: 20px !important;
+            margin-top: 35px !important;
             page-break-inside: avoid;
           }
         }
         @media screen {
-          .print-voucher-header, .print-signature-block {
+          .print-voucher-header, .print-signature-block, .print-only-layout {
             display: none;
           }
         }
@@ -183,20 +184,20 @@ export default function AdminOrderDetailPage() {
 
       {/* Printable voucher header */}
       <div className="print-voucher-header">
-        <div className="flex justify-between items-start border-b-2 border-black pb-4">
+        <div className="flex justify-between items-start border-b-2 border-black pb-2">
           <div>
-            <h1 className="text-xl font-extrabold tracking-tight">SALDO ENTREGAS — VALE DE DESPACHO</h1>
-            <p className="text-xs text-gray-500 mt-1">Control de Entregas Parciales y Saldos</p>
+            <h1 className="text-lg font-extrabold tracking-tight">SALDO ENTREGAS — VALE DE DESPACHO</h1>
+            <p className="text-[10px] text-gray-500 mt-0.5">Control de Entregas Parciales y Saldos</p>
           </div>
           <div className="text-right">
-            <div className="text-sm font-bold">Orden No: {order.orderNumber || order.id.substring(0, 8).toUpperCase()}</div>
-            <div className="text-xs text-gray-600 mt-0.5">Fecha: {formatDateTime(order.createdAt)}</div>
+            <div className="text-xs font-bold">Orden No: {order.orderNumber || order.id.substring(0, 8).toUpperCase()}</div>
+            <div className="text-[10px] text-gray-600 mt-0.5">Fecha: {formatDateTime(order.createdAt)}</div>
           </div>
         </div>
       </div>
 
-      {/* Main Order Details Card */}
-      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+      {/* Main Order Details Card (Screen Only) */}
+      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden print:hidden">
         <div className="bg-brand-gradient p-6 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
@@ -232,7 +233,14 @@ export default function AdminOrderDetailPage() {
                 <MapPin className="w-4.5 h-4.5 text-muted-foreground flex-shrink-0 mt-0.5" />
                 <div>
                   <div className="text-xs text-muted-foreground">Dirección de Entrega</div>
-                  <div className="font-semibold text-foreground">{order.deliveryAddress}</div>
+                  <div className="font-semibold text-foreground">
+                    {order.deliveryAddress}
+                    {order.provincia && (
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        📍 {order.provincia}, {order.canton}, {order.distrito}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -287,8 +295,28 @@ export default function AdminOrderDetailPage() {
         )}
       </div>
 
-      {/* Items list */}
-      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+      {/* Compact Printable Order Details Header (Print Only) */}
+      <div className="print-only-layout border border-gray-300 rounded p-2.5 mb-3 text-[10px] leading-relaxed">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+          <div><strong>Cliente:</strong> {order.clientName}</div>
+          <div><strong>Repartidor Asignado:</strong> {order.assignedDriverName}</div>
+          <div><strong>Dirección de Entrega:</strong> {order.deliveryAddress || '—'}</div>
+          <div>
+            <strong>Ubicación de Entrega:</strong>{' '}
+            {order.provincia ? `${order.provincia}, ${order.canton}, ${order.distrito}` : '—'}
+          </div>
+          <div><strong>Fecha Planificada:</strong> {formatDateTime(order.createdAt)}</div>
+          <div><strong>Factura de Origen:</strong> {order.invoiceReference}</div>
+        </div>
+        {order.adminNotes && (
+          <div className="mt-1.5 pt-1.5 border-t border-gray-200">
+            <strong>Instrucciones:</strong> {order.adminNotes}
+          </div>
+        )}
+      </div>
+
+      {/* Items List (Screen Only) */}
+      <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden print:hidden">
         <div className="p-5 border-b border-border bg-muted/20">
           <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
             <Package className="w-4 h-4 text-primary" />
@@ -356,9 +384,42 @@ export default function AdminOrderDetailPage() {
         </div>
       </div>
 
-      {/* Notes block */}
+      {/* Printable Compact Items List (Print Only) */}
+      <div className="print-only-layout border border-gray-300 rounded overflow-hidden">
+        <table className="w-full text-left border-collapse text-[10px]">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-300 font-bold">
+              <th className="py-1.5 px-2 border-r border-gray-300">Artículo</th>
+              <th className="py-1.5 px-2 text-right border-r border-gray-300 w-16">Enviado</th>
+              <th className="py-1.5 px-2 text-center border-r border-gray-300 w-24">Devuelto (Lapicero)</th>
+              <th className="py-1.5 px-2 w-48">Excepción / Motivo (Lapicero)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-300">
+            {order.items.map((item, index) => (
+              <tr key={index}>
+                <td className="py-1 px-2 border-r border-gray-300 leading-tight">
+                  <div className="font-semibold text-black">{item.description}</div>
+                  <div className="text-[8px] text-gray-500 font-mono mt-0.5">
+                    {item.sku} · {item.unit}
+                  </div>
+                </td>
+                <td className="py-1 px-2 text-right font-medium text-black border-r border-gray-300">
+                  {formatNumber(item.quantityDispatched)}
+                </td>
+                {/* Empty column for manually writing returned quantity */}
+                <td className="py-1 px-2 border-r border-gray-300 text-center bg-gray-50/20"></td>
+                {/* Completely empty column for writing return exception/reason */}
+                <td className="py-1 px-2 bg-gray-50/20"></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Notes block (Screen Only) */}
       {(order.adminNotes || order.driverNotes) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:hidden">
           {order.adminNotes && (
             <div className="bg-card rounded-xl border border-border p-5 shadow-sm">
               <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
@@ -385,21 +446,21 @@ export default function AdminOrderDetailPage() {
       {/* Printable signature fields */}
       <div className="print-signature-block">
         <div className="flex flex-col items-center">
-          <div className="w-64 border-b border-black mt-16"></div>
-          <div className="text-xs font-bold mt-2 text-center">Firma de Recibido del Cliente</div>
-          <div className="text-[10px] text-gray-500 mt-1 text-center">
+          <div className="w-56 border-b border-black mt-8"></div>
+          <div className="text-[10px] font-bold mt-1 text-center">Firma de Recibido del Cliente</div>
+          <div className="text-[9px] text-gray-500 mt-0.5 text-center">
             Nombre y DPI/Identificación
           </div>
-          <div className="text-[10px] text-gray-500 text-center">Fecha y Hora: ____/____/________  ____:____</div>
+          <div className="text-[9px] text-gray-500 text-center">Fecha y Hora: ____/____/________  ____:____</div>
         </div>
 
         <div className="flex flex-col items-center">
-          <div className="w-64 border-b border-black mt-16"></div>
-          <div className="text-xs font-bold mt-2 text-center">Firma del Repartidor</div>
-          <div className="text-[10px] text-gray-500 mt-1 text-center">
+          <div className="w-56 border-b border-black mt-8"></div>
+          <div className="text-[10px] font-bold mt-1 text-center">Firma del Repartidor</div>
+          <div className="text-[9px] text-gray-500 mt-0.5 text-center">
             {order.assignedDriverName}
           </div>
-          <div className="text-[10px] text-gray-500 text-center">Despachado desde Bodega Central</div>
+          <div className="text-[9px] text-gray-500 text-center">Despachado desde Bodega Central</div>
         </div>
       </div>
 

@@ -148,6 +148,8 @@ export function getInvoiceStatusVariant(status: string): StatusVariant {
   switch (status) {
     case 'completed':
       return 'success'
+    case 'in_progress':
+      return 'warning'
     case 'cancelled':
       return 'destructive'
     default:
@@ -166,13 +168,16 @@ export function validateDispatchQuantity(
   quantity: number,
   pendingQuantity: number
 ): { valid: boolean; error?: string } {
-  if (quantity <= 0) {
+  const roundedQty = Math.round(quantity * 100) / 100
+  const roundedPending = Math.round(pendingQuantity * 100) / 100
+
+  if (roundedQty <= 0) {
     return { valid: false, error: 'La cantidad debe ser mayor a 0' }
   }
-  if (quantity > pendingQuantity) {
+  if (roundedQty > roundedPending) {
     return {
       valid: false,
-      error: `No puede superar el saldo pendiente (${pendingQuantity})`,
+      error: `No puede superar el saldo pendiente (${formatNumber(pendingQuantity)})`,
     }
   }
   return { valid: true }

@@ -9,7 +9,7 @@ import { Loader2, Package, Lock, Mail } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
+  const [usernameOrEmail, setUsernameOrEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -17,7 +17,11 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     try {
-      const cred = await signIn(email, password)
+      const formattedEmail = usernameOrEmail.includes('@')
+        ? usernameOrEmail.trim()
+        : `${usernameOrEmail.trim()}@saldoentregasmp`
+
+      const cred = await signIn(formattedEmail, password)
       const profile = await getUserDoc(cred.user.uid)
       if (!profile || !profile.isActive) {
         toast.error('Cuenta inactiva. Contacta al administrador.')
@@ -28,7 +32,7 @@ export default function LoginPage() {
       if (profile.role === 'admin') router.replace('/dashboard')
       else router.replace('/my-orders')
     } catch {
-      toast.error('Email o contraseña incorrectos')
+      toast.error('Usuario/correo o contraseña incorrectos')
       setLoading(false)
     }
   }
@@ -94,18 +98,18 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium text-foreground">
-                Correo electrónico
+              <label htmlFor="username" className="text-sm font-medium text-foreground">
+                Usuario o Correo electrónico
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="username"
+                  type="text"
+                  value={usernameOrEmail}
+                  onChange={(e) => setUsernameOrEmail(e.target.value)}
                   required
-                  placeholder="usuario@empresa.com"
+                  placeholder="juan23 o usuario@empresa.com"
                   className="w-full pl-10 pr-4 py-3 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                 />
               </div>

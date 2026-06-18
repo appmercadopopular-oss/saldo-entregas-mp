@@ -23,6 +23,14 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
 }
 
+function formatEmailOrUsername(email: string) {
+  if (email.endsWith('@saldoentregasmp')) {
+    return email.replace('@saldoentregasmp', '')
+  }
+  return email
+}
+
+
 export default function UsersPage() {
   const [users, setUsers] = useState<UserDoc[]>([])
   const [filtered, setFiltered] = useState<UserDoc[]>([])
@@ -73,6 +81,7 @@ export default function UsersPage() {
         (u) =>
           u.displayName.toLowerCase().includes(s) ||
           u.email.toLowerCase().includes(s) ||
+          (u.email.endsWith('@saldoentregasmp') && u.email.replace('@saldoentregasmp', '').toLowerCase().includes(s)) ||
           (u.phoneNumber && u.phoneNumber.includes(s))
       )
     }
@@ -107,8 +116,13 @@ export default function UsersPage() {
         initializeApp(firebaseConfig, 'SecondaryApp')
       const secondaryAuth = getAuth(secondaryApp)
 
+      // Map email to virtual email if no '@' domain is present
+      const formattedEmail = email.includes('@')
+        ? email.trim()
+        : `${email.trim()}@saldoentregasmp`
+
       // 2. Create the user in Auth
-      const creds = await createUserWithEmailAndPassword(secondaryAuth, email, password)
+      const creds = await createUserWithEmailAndPassword(secondaryAuth, formattedEmail, password)
       const newUid = creds.user.uid
 
       // 3. Log out of secondary auth immediately
@@ -117,7 +131,7 @@ export default function UsersPage() {
       // 4. Create the Firestore User Profile
       const userPayload: UserDoc = {
         uid: newUid,
-        email,
+        email: formattedEmail,
         displayName: name,
         role,
         isActive: true,
@@ -143,9 +157,13 @@ export default function UsersPage() {
       console.error(err)
       let msg = 'Error al registrar el usuario'
       if (err.code === 'auth/email-already-in-use') {
-        msg = 'Este correo electrónico ya está registrado'
+        msg = role === 'driver'
+          ? 'Este nombre de usuario ya está registrado'
+          : 'Este correo electrónico ya está registrado'
       } else if (err.code === 'auth/invalid-email') {
-        msg = 'El formato del correo electrónico no es válido'
+        msg = role === 'driver'
+          ? 'El nombre de usuario no es válido'
+          : 'El formato del correo electrónico no es válido'
       } else if (err.code === 'auth/weak-password') {
         msg = 'La contraseña debe tener al menos 6 caracteres'
       }
@@ -224,7 +242,7 @@ export default function UsersPage() {
               <thead className="bg-muted/50 border-b border-border">
                 <tr>
                   <th className="text-left text-xs font-medium text-muted-foreground px-6 py-3">Nombre</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Correo</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Usuario / Correo</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Teléfono</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Rol</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Estado</th>
@@ -260,7 +278,7 @@ export default function UsersPage() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-4 text-sm text-muted-foreground">{user.email}</td>
+                    <td className="px-4 py-4 text-sm text-muted-foreground">{formatEmailOrUsername(user.email)}</td>
                     <td className="px-4 py-4 text-sm text-muted-foreground">
                       {user.phoneNumber || '—'}
                     </td>
@@ -348,15 +366,21 @@ export default function UsersPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Correo Electrónico *</label>
+                <label className="text-xs font-medium text-muted-foreground">
+                  {role === 'driver' ? 'Nombre de Usuario *' : 'Correo Electrónico *'}
+                </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  {role === 'driver' ? (
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  ) : (
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  )}
                   <input
-                    type="email"
+                    type={role === 'driver' ? 'text' : 'email'}
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="juan@ferreteria.com"
+                    placeholder={role === 'driver' ? 'Ej. juan23' : 'juan@ferreteria.com'}
                     className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                   />
                 </div>

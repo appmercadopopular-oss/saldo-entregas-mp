@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const reference = searchParams.get('reference')
   const id = searchParams.get('id')
+  const companyId = searchParams.get('companyId') || 'mercado_popular'
 
   if (!reference && !id) {
     return NextResponse.json(
@@ -32,7 +33,8 @@ export async function GET(request: NextRequest) {
     const result = await fetchAndTransformInvoice(
       (reference ?? id)!,
       importedBy,
-      id ? 'id' : 'reference'
+      id ? 'id' : 'reference',
+      companyId
     )
 
     return NextResponse.json({

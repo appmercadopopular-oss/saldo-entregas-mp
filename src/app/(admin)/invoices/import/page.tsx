@@ -16,9 +16,16 @@ type PreviewData = {
   items: Omit<InvoiceItemDoc, 'id'>[]
 }
 
+const COMPANIES = [
+  { id: 'mercado_popular', name: 'Mercado Popular' },
+  { id: 'construferre_max', name: 'Construferre Max S.A' },
+  { id: 'mision_tica', name: 'Inversiones y Proyectos Misión Tica S.A' }
+]
+
 export default function ImportInvoicePage() {
   const router = useRouter()
   const { firebaseUser } = useAuth()
+  const [selectedCompany, setSelectedCompany] = useState('mercado_popular')
   
   // Navigation Tabs: 'direct' (search by single reference/id) or 'range' (search by date range)
   const [searchTab, setSearchTab] = useState<'direct' | 'range'>('direct')
@@ -72,7 +79,7 @@ export default function ImportInvoicePage() {
 
       const uid = firebaseUser?.uid ?? 'system'
       const res = await fetch(
-        `/api/finanzapro/invoice?reference=${encodeURIComponent(query.trim())}`,
+        `/api/finanzapro/invoice?reference=${encodeURIComponent(query.trim())}&companyId=${selectedCompany}`,
         { headers: { 'x-user-uid': uid } }
       )
       const json = await res.json()
@@ -100,7 +107,7 @@ export default function ImportInvoicePage() {
 
     try {
       const res = await fetch(
-        `/api/finanzapro/invoices?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`
+        `/api/finanzapro/invoices?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&companyId=${selectedCompany}`
       )
       const json = await res.json()
 
@@ -134,7 +141,7 @@ export default function ImportInvoicePage() {
         : `reference=${encodeURIComponent(invoice.internalReference)}`
 
       const res = await fetch(
-        `/api/finanzapro/invoice?${queryParam}`,
+        `/api/finanzapro/invoice?${queryParam}&companyId=${selectedCompany}`,
         { headers: { 'x-user-uid': uid } }
       )
       const json = await res.json()
@@ -185,6 +192,30 @@ export default function ImportInvoicePage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Importar Factura</h1>
         <p className="text-muted-foreground mt-1">Busca y selecciona una factura en FinanzaPro para registrarla en el sistema</p>
+      </div>
+
+      {/* Company Selector */}
+      <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
+        <label htmlFor="company-select" className="block text-sm font-bold text-foreground mb-2">
+          Seleccionar Empresa / Proveedor
+        </label>
+        <select
+          id="company-select"
+          value={selectedCompany}
+          onChange={(e) => {
+            setSelectedCompany(e.target.value)
+            setPreview(null)
+            setAlreadyExists(false)
+            setRangeResults(null)
+          }}
+          className="w-full max-w-md px-4 py-2.5 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all cursor-pointer"
+        >
+          {COMPANIES.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Tabs Selector */}
@@ -333,8 +364,9 @@ export default function ImportInvoicePage() {
                       <td className="py-3.5 px-6 font-semibold text-foreground font-mono text-sm">
                         {inv.internalReference || '—'}
                       </td>
-                      <td className="py-3.5 px-6 text-foreground font-medium max-w-[220px] truncate" title={inv.clientName}>
-                        {inv.clientName}
+                      <td className="py-3.5 px-6 max-w-[220px] truncate" title={inv.clientName}>
+                        <div className="text-foreground font-medium">{inv.clientName}</div>
+                        <div className="text-xs text-muted-foreground">{inv.companyName || 'Mercado Popular'}</div>
                       </td>
                       <td className="py-3.5 px-6 text-muted-foreground">
                         {formatDate(new Date(inv.invoiceDate))}
@@ -403,6 +435,11 @@ export default function ImportInvoicePage() {
                 <div>
                   <div className="text-lg font-bold text-foreground">{preview.invoice.internalReference}</div>
                   <div className="text-sm text-muted-foreground">{preview.invoice.clientName}</div>
+                  <div className="mt-1">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-secondary text-secondary-foreground">
+                      {preview.invoice.companyName || 'Mercado Popular'}
+                    </span>
+                  </div>
                   <div className="text-xs text-muted-foreground mt-1">
                     Emitida: {formatDate(preview.invoice.issueDate)}
                   </div>

@@ -20,18 +20,35 @@ import type {
 import { Timestamp } from 'firebase/firestore'
 
 // ─────────────────────────────────────────────────────────────
-// Configuración
+// Configuración y Multi-Empresa
 // ─────────────────────────────────────────────────────────────
+
+export interface CompanyConfig {
+  id: string
+  name: string
+  apiKey: string
+}
+
+export const COMPANIES: CompanyConfig[] = [
+  {
+    id: 'mercado_popular',
+    name: 'Mercado Popular',
+    apiKey: process.env.FINANZAPRO_API_KEY_MERCADO_POPULAR || process.env.FINANZAPRO_API_KEY || '',
+  },
+  {
+    id: 'construferre_max',
+    name: 'Construferre Max S.A',
+    apiKey: process.env.FINANZAPRO_API_KEY_CONSTRUFERRE_MAX || '',
+  },
+  {
+    id: 'mision_tica',
+    name: 'Inversiones y Proyectos Misión Tica S.A',
+    apiKey: process.env.FINANZAPRO_API_KEY_MISION_TICA || '',
+  },
+]
 
 const BASE_URL =
   process.env.FINANZAPRO_BASE_URL ?? 'https://api.finanzapro.com'
-const API_KEY = process.env.FINANZAPRO_API_KEY ?? ''
-
-if (!API_KEY && process.env.NODE_ENV === 'production') {
-  console.error(
-    '[FinanzaPro] ⚠️  FINANZAPRO_API_KEY no está configurada. Las importaciones de facturas fallarán.'
-  )
-}
 
 // ─────────────────────────────────────────────────────────────
 // Errores tipados
@@ -54,6 +71,7 @@ export class FinanzaProError extends Error {
 
 async function finanzaProFetch<T>(
   path: string,
+  apiKey: string,
   options?: RequestInit
 ): Promise<T> {
   const url = `${BASE_URL}${path}`
@@ -64,7 +82,7 @@ async function finanzaProFetch<T>(
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': API_KEY,
+      'X-API-Key': apiKey,
       ...options?.headers,
     },
     next: { revalidate: 60 },
@@ -102,10 +120,12 @@ async function finanzaProFetch<T>(
  * Endpoint: GET /invoicing-service/v2/invoices/{id}
  */
 export async function fetchInvoiceById(
-  id: string
+  id: string,
+  apiKey: string
 ): Promise<FinanzaProInvoice> {
   const response = await finanzaProFetch<any>(
-    `/invoicing-service/v2/invoices/${encodeURIComponent(id)}`
+    `/invoicing-service/v2/invoices/${encodeURIComponent(id)}`,
+    apiKey
   )
   
   // Soporta tanto si la respuesta viene envuelta en { success, data } como si es el objeto directo
@@ -121,7 +141,8 @@ export async function fetchInvoiceById(
  * Endpoint: GET /invoicing-service/v2/invoices?invoiceDate={date}
  */
 export async function fetchInvoicesByDate(
-  date: string
+  date: string,
+  apiKey: string
 ): Promise<any[]> {
   let allInvoices: any[] = []
   let page = 1
@@ -130,7 +151,8 @@ export async function fetchInvoicesByDate(
   while (hasMore) {
     console.log(`[FinanzaPro Client] Fetching invoices for ${date}, page ${page}...`)
     const response = await finanzaProFetch<any>(
-      `/invoicing-service/v2/invoices?invoiceDate=${encodeURIComponent(date)}&page=${page}&limit=100`
+      `/invoicing-service/v2/invoices?invoiceDate=${encodeURIComponent(date)}&page=${page}&limit=100`,
+      apiKey
     )
 
     let pageData: any[] = []
@@ -178,7 +200,8 @@ export async function fetchInvoicesByDate(
  * Endpoint: GET /invoicing-service/v2/invoices?internalReference={ref}
  */
 export async function fetchInvoiceByReference(
-  reference: string
+  reference: string,
+  apiKey: string
 ): Promise<FinanzaProInvoice> {
   const possibleParams = ['internalReference', 'reference', 'number', 'invoiceNumber', 'q', 'search']
   const refClean = reference.trim()
@@ -187,7 +210,8 @@ export async function fetchInvoiceByReference(
     try {
       console.log(`[FinanzaPro Client] Probing search by reference with parameter '${paramName}' = '${refClean}'...`)
       const response = await finanzaProFetch<any>(
-        `/invoicing-service/v2/invoices?${paramName}=${encodeURIComponent(refClean)}&limit=5`
+        `/invoicing-service/v2/invoices?${paramName}=${encodeURIComponent(refClean)}&limit=5`,
+        apiKey
       )
 
       let items: any[] = []
@@ -216,7 +240,7 @@ export async function fetchInvoiceByReference(
           console.log(`[FinanzaPro Client] Match found using query parameter '${paramName}'!`)
           if (match.id) {
             console.log(`[FinanzaPro Client] Fetching full details for matched invoice ID: ${match.id}`)
-            return await fetchInvoiceById(match.id)
+            return await fetchInvoiceById(match.id, apiKey)
           }
           return match
         }
@@ -242,10 +266,12 @@ export async function fetchInvoiceByReference(
  *
  * @param raw         Datos crudos de FinanzaPro
  * @param importedBy  UID del admin que está importando
+ * @param companyName Nombre de la empresa originaria
  */
 export function transformInvoice(
   raw: any,
-  importedBy: string
+  importedBy: string,
+  companyName: string
 ): {
   invoice: Omit<InvoiceDoc, 'id'>
   items: Omit<InvoiceItemDoc, 'id'>[]
@@ -263,6 +289,7 @@ export function transformInvoice(
     totalItems: raw.lines ? raw.lines.length : 0,
     isFullyDelivered: false,
     notes: '',
+    companyName,
   }
 
   const items: Omit<InvoiceItemDoc, 'id'>[] = (raw.lines || []).map((line: any) => ({
@@ -290,22 +317,31 @@ export function transformInvoice(
  * @param query      ID de FinanzaPro o número de referencia (ej. "FAC-2024-001")
  * @param importedBy UID del admin importador
  * @param mode       'id' | 'reference' — cómo buscar en FinanzaPro
+ * @param companyId  Identificador de la empresa
  */
 export async function fetchAndTransformInvoice(
   query: string,
   importedBy: string,
-  mode: 'id' | 'reference' = 'reference'
+  mode: 'id' | 'reference' = 'reference',
+  companyId: string = 'mercado_popular'
 ): Promise<{
   raw: FinanzaProInvoice
   invoice: Omit<InvoiceDoc, 'id'>
   items: Omit<InvoiceItemDoc, 'id'>[]
 }> {
+  const company = COMPANIES.find(c => c.id === companyId) || COMPANIES[0]
+  if (!company.apiKey && process.env.NODE_ENV === 'production') {
+    console.error(
+      `[FinanzaPro] ⚠️ API Key para la empresa "${company.name}" no está configurada.`
+    )
+  }
+
   const raw =
     mode === 'id'
-      ? await fetchInvoiceById(query)
-      : await fetchInvoiceByReference(query)
+      ? await fetchInvoiceById(query, company.apiKey)
+      : await fetchInvoiceByReference(query, company.apiKey)
 
-  const { invoice, items } = transformInvoice(raw, importedBy)
+  const { invoice, items } = transformInvoice(raw, importedBy, company.name)
 
   return { raw, invoice, items }
 }

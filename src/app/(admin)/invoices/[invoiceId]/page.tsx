@@ -102,7 +102,12 @@ export default function InvoiceDetailPage() {
                   {INVOICE_STATUS_LABELS[invoice.status]}
                 </span>
               </div>
-              <p className="text-muted-foreground mt-1">{invoice.clientName}</p>
+               <div className="flex gap-2 items-center mt-1 flex-wrap">
+                <p className="text-muted-foreground">{invoice.clientName}</p>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-secondary text-secondary-foreground">
+                  {invoice.companyName || 'Mercado Popular'}
+                </span>
+              </div>
               {invoice.deliveryAddress && (
                 <p className="text-sm text-muted-foreground mt-0.5">📍 {invoice.deliveryAddress}</p>
               )}

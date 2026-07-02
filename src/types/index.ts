@@ -60,6 +60,8 @@ export interface InvoiceDoc {
   notes?: string
   /** Orden de prioridad numérica (1 = mayor prioridad) */
   priority?: number
+  /** Nombre de la empresa asociada a la factura */
+  companyName?: string
 }
 
 // -------------------------------------------------------------

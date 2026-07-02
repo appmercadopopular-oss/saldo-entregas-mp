@@ -7,7 +7,7 @@
 // =============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchInvoicesByDate, FinanzaProError } from '@/lib/finanzapro/client'
+import { fetchInvoicesByDate, FinanzaProError, COMPANIES } from '@/lib/finanzapro/client'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '@/lib/firebase/config'
 
@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const startDate = searchParams.get('startDate')
   const endDate = searchParams.get('endDate')
+  const companyId = searchParams.get('companyId') || 'mercado_popular'
+  const company = COMPANIES.find(c => c.id === companyId) || COMPANIES[0]
 
   // 1. Validar presencia de parámetros
   if (!startDate || !endDate) {
@@ -75,7 +77,7 @@ export async function GET(request: NextRequest) {
 
     // 5. Consultar FinanzaPro en paralelo para cada día
     console.log(`[API/finanzapro/invoices] Querying ${dateStrings.length} days in parallel:`, dateStrings)
-    const fetchPromises = dateStrings.map(d => fetchInvoicesByDate(d))
+    const fetchPromises = dateStrings.map(d => fetchInvoicesByDate(d, company.apiKey))
     const resultsArray = await Promise.all(fetchPromises)
 
     // Aplanar los resultados
@@ -90,7 +92,8 @@ export async function GET(request: NextRequest) {
       invoiceDate: item.invoiceDate,
       total: item.total || item.totalAmount || 0,
       currency: item.currency || 'CRC',
-      alreadyImported: false
+      alreadyImported: false,
+      companyName: company.name
     }))
 
     // Deduplicar por internalReference

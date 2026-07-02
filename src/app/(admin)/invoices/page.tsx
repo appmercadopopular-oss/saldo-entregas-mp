@@ -223,7 +223,10 @@ export default function InvoicesPage() {
                         <span className="text-sm font-semibold text-foreground">{inv.internalReference}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-4 text-sm text-foreground">{inv.clientName}</td>
+                    <td className="px-4 py-4">
+                      <div className="text-sm text-foreground font-medium">{inv.clientName}</div>
+                      <div className="text-xs text-muted-foreground">{inv.companyName || 'Mercado Popular'}</div>
+                    </td>
                     <td className="px-4 py-4 text-sm text-muted-foreground">{formatDate(inv.issueDate)}</td>
                     <td className="px-4 py-4 text-sm text-muted-foreground">{inv.totalItems}</td>
                     <td className="px-4 py-4">

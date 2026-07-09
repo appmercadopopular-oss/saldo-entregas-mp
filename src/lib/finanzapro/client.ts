@@ -195,6 +195,82 @@ export async function fetchInvoicesByDate(
 }
 
 /**
+ * Obtiene la lista de notas de crédito emitidas en una fecha específica.
+ *
+ * Endpoint: GET /invoicing-service/v2/credit-notes?invoiceDate={date}
+ */
+export async function fetchCreditNotesByDate(
+  date: string,
+  apiKey: string
+): Promise<any[]> {
+  let allCreditNotes: any[] = []
+  let page = 1
+  let hasMore = true
+
+  const dateParams = ['invoiceDate', 'date', 'issueDate']
+
+  while (hasMore) {
+    console.log(`[FinanzaPro Client CreditNotes] Fetching credit notes for ${date}, page ${page}...`)
+    
+    let response: any = null
+    let success = false
+
+    for (const param of dateParams) {
+      try {
+        response = await finanzaProFetch<any>(
+          `/invoicing-service/v2/credit-notes?${param}=${encodeURIComponent(date)}&page=${page}&limit=100`,
+          apiKey
+        )
+        success = true
+        break
+      } catch (err) {
+        console.warn(`[FinanzaPro Client CreditNotes] Probing with param '${param}' failed:`, err)
+      }
+    }
+
+    if (!success || !response) {
+      break
+    }
+
+    let pageData: any[] = []
+    if (response && response.data !== undefined) {
+      pageData = response.data.items || response.data
+    } else if (Array.isArray(response)) {
+      pageData = response
+    }
+
+    if (!pageData || pageData.length === 0) {
+      break
+    }
+
+    allCreditNotes.push(...pageData)
+
+    const pagination = response.pagination
+    if (pagination) {
+      const itemsPerPage = pagination.perPage || 50
+      if (pageData.length < itemsPerPage) {
+        hasMore = false
+      } else {
+        page++
+      }
+    } else {
+      if (pageData.length < 50) {
+        hasMore = false
+      } else {
+        page++
+      }
+    }
+
+    if (page > 15) {
+      console.warn(`[FinanzaPro Client CreditNotes] Safety page limit reached (15 pages) for date: ${date}`)
+      break
+    }
+  }
+
+  return allCreditNotes
+}
+
+/**
  * Busca una factura por su referencia interna (número de factura visible).
  *
  * Endpoint: GET /invoicing-service/v2/invoices?internalReference={ref}

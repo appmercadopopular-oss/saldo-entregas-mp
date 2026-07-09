@@ -7,7 +7,7 @@
 // =============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchInvoicesByDate, FinanzaProError, COMPANIES } from '@/lib/finanzapro/client'
+import { fetchInvoicesByDate, fetchCreditNotesByDate, FinanzaProError, COMPANIES } from '@/lib/finanzapro/client'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db } from '@/lib/firebase/config'
 
@@ -75,21 +75,27 @@ export async function GET(request: NextRequest) {
       currentDate.setDate(currentDate.getDate() + 1)
     }
 
+    const type = searchParams.get('type')
+
     // 5. Consultar FinanzaPro en paralelo para cada día
-    console.log(`[API/finanzapro/invoices] Querying ${dateStrings.length} days in parallel:`, dateStrings)
-    const fetchPromises = dateStrings.map(d => fetchInvoicesByDate(d, company.apiKey))
+    console.log(`[API/finanzapro/invoices] Querying ${dateStrings.length} days in parallel (type = ${type || 'invoice'}):`, dateStrings)
+    const fetchPromises = dateStrings.map(d =>
+      type === 'credit-note'
+        ? fetchCreditNotesByDate(d, company.apiKey)
+        : fetchInvoicesByDate(d, company.apiKey)
+    )
     const resultsArray = await Promise.all(fetchPromises)
 
     // Aplanar los resultados
-    const rawInvoices = resultsArray.flat()
+    const rawDocs = resultsArray.flat()
 
-    // 6. Mapear y limpiar facturas
-    const mappedInvoices = rawInvoices.map((item: any) => ({
+    // 6. Mapear y limpiar documentos
+    const mappedDocs = rawDocs.map((item: any) => ({
       id: item.id,
-      internalReference: item.internalReference,
+      internalReference: item.internalReference || item.number || '',
       clientName: item.customerName || item.client?.name || item.nameOnInvoice || 'Cliente General',
       clientId: item.customerId || item.client?.id || 'CLI-GENERIC',
-      invoiceDate: item.invoiceDate,
+      invoiceDate: item.invoiceDate || item.issueDate || new Date().toISOString(),
       total: item.total || item.totalAmount || 0,
       currency: item.currency || 'CRC',
       alreadyImported: false,
@@ -98,58 +104,58 @@ export async function GET(request: NextRequest) {
 
     // Deduplicar por internalReference
     const seen = new Set<string>()
-    let invoices = mappedInvoices.filter(inv => {
-      if (!inv.internalReference) return true
-      if (seen.has(inv.internalReference)) return false
-      seen.add(inv.internalReference)
+    let docs = mappedDocs.filter(doc => {
+      if (!doc.internalReference) return true
+      if (seen.has(doc.internalReference)) return false
+      seen.add(doc.internalReference)
       return true
     })
 
     // Ordenar por número de referencia
-    invoices.sort((a, b) => (a.internalReference || '').localeCompare(b.internalReference || ''))
+    docs.sort((a, b) => (a.internalReference || '').localeCompare(b.internalReference || ''))
 
-    // 7. Verificar en Firestore cuáles ya han sido importadas
-    const refs = invoices.map(inv => inv.internalReference).filter(Boolean)
-    const existingRefs = new Set<string>()
-    const existingMap = new Map<string, string>()
+    // 7. Verificar en Firestore cuáles ya han sido importadas (solo aplica para facturas)
+    if (type !== 'credit-note' && docs.length > 0) {
+      const refs = docs.map(inv => inv.internalReference).filter(Boolean)
+      const existingRefs = new Set<string>()
+      const existingMap = new Map<string, string>()
 
-    if (refs.length > 0) {
-      // El operador 'in' de Firestore está limitado a 30 elementos.
-      // Chunking del array en bloques de 30.
-      const chunkSize = 30
-      const chunks: string[][] = []
-      for (let i = 0; i < refs.length; i += chunkSize) {
-        chunks.push(refs.slice(i, i + chunkSize))
-      }
+      if (refs.length > 0) {
+        const chunkSize = 30
+        const chunks: string[][] = []
+        for (let i = 0; i < refs.length; i += chunkSize) {
+          chunks.push(refs.slice(i, i + chunkSize))
+        }
 
-      const queryPromises = chunks.map(async (chunk) => {
-        const q = query(
-          collection(db, 'invoices'),
-          where('internalReference', 'in', chunk)
-        )
-        const snap = await getDocs(q)
-        snap.docs.forEach((doc) => {
-          const data = doc.data()
-          if (data.internalReference) {
-            existingRefs.add(data.internalReference)
-            existingMap.set(data.internalReference, doc.id)
-          }
+        const queryPromises = chunks.map(async (chunk) => {
+          const q = query(
+            collection(db, 'invoices'),
+            where('internalReference', 'in', chunk)
+          )
+          const snap = await getDocs(q)
+          snap.docs.forEach((doc) => {
+            const data = doc.data()
+            if (data.internalReference) {
+              existingRefs.add(data.internalReference)
+              existingMap.set(data.internalReference, doc.id)
+            }
+          })
         })
-      })
 
-      await Promise.all(queryPromises)
+        await Promise.all(queryPromises)
 
-      // Actualizar bandera alreadyImported y localId
-      invoices = invoices.map(inv => ({
-        ...inv,
-        alreadyImported: inv.internalReference ? existingRefs.has(inv.internalReference) : false,
-        localId: inv.internalReference ? (existingMap.get(inv.internalReference) || null) : null
-      }))
+        // Actualizar bandera alreadyImported y localId
+        docs = docs.map(inv => ({
+          ...inv,
+          alreadyImported: inv.internalReference ? existingRefs.has(inv.internalReference) : false,
+          localId: inv.internalReference ? (existingMap.get(inv.internalReference) || null) : null
+        }))
+      }
     }
 
     return NextResponse.json({
       success: true,
-      data: invoices
+      data: docs
     })
   } catch (error: any) {
     console.error('[API/finanzapro/invoices ERROR]', error)

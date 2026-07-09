@@ -146,28 +146,28 @@ export default function ImportInvoicePage() {
 
     try {
       const res = await fetch(
-        `/api/finanzapro/invoices?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&companyId=${selectedCompany}`
+        `/api/finanzapro/invoices?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&companyId=${selectedCompany}&type=${docType}`
       )
       const json = await res.json()
 
       if (!res.ok) {
-        throw new Error(json.error ?? 'Error al buscar facturas por rango de fechas')
+        throw new Error(json.error ?? `Error al buscar los documentos por rango de fechas`)
       }
 
       setRangeResults(json.data)
       if (json.data.length === 0) {
-        toast.info('No se encontraron facturas en el rango de fechas seleccionado')
+        toast.info(`No se encontraron ${docType === 'invoice' ? 'facturas' : 'notas de crédito'} en el rango de fechas seleccionado`)
       } else {
-        toast.success(`Se encontraron ${json.data.length} facturas`)
+        toast.success(`Se encontraron ${json.data.length} documentos`)
       }
     } catch (err: any) {
-      toast.error(err.message ?? 'Error al buscar facturas')
+      toast.error(err.message ?? 'Error al buscar documentos')
     } finally {
       setLoadingRange(false)
     }
   }
 
-  // Fetch full details of a specific invoice from range results to show the preview card
+  // Fetch full details of a specific invoice/credit-note from range results to show the preview card
   async function handleSelectInvoice(invoice: any) {
     setSearching(true)
     setPreview(null)
@@ -180,30 +180,36 @@ export default function ImportInvoicePage() {
       const queryParam = invoice.id 
         ? `id=${encodeURIComponent(invoice.id)}` 
         : `reference=${encodeURIComponent(invoice.internalReference)}`
+      const typeParam = docType === 'credit-note' ? '&type=credit-note' : ''
 
       const res = await fetch(
-        `/api/finanzapro/invoice?${queryParam}&companyId=${selectedCompany}`,
+        `/api/finanzapro/invoice?${queryParam}&companyId=${selectedCompany}${typeParam}`,
         { headers: { 'x-user-uid': uid } }
       )
       const json = await res.json()
 
       if (!res.ok) {
-        throw new Error(json.error ?? 'Error al cargar los detalles de la factura')
+        throw new Error(json.error ?? `Error al cargar los detalles del documento`)
       }
 
-      setPreview(json.data)
-      setImmediateQuantities({})
-      toast.success('Detalles de factura cargados. Revisa el resumen abajo.')
+      if (docType === 'credit-note') {
+        setCreditNoteRaw(json.data.raw)
+        toast.success('Nota de crédito encontrada. Por favor vincúlala a una factura padre.')
+      } else {
+        setPreview(json.data)
+        setImmediateQuantities({})
+        toast.success('Detalles de factura cargados. Revisa el resumen abajo.')
+      }
 
-      // Smooth scroll to preview panel
+      // Smooth scroll to preview/linking panel
       setTimeout(() => {
-        const previewElement = document.getElementById('preview-section')
+        const previewElement = document.getElementById('preview-section') || document.getElementById('invoice-search')
         if (previewElement) {
           previewElement.scrollIntoView({ behavior: 'smooth' })
         }
       }, 100)
     } catch (err: any) {
-      toast.error(err.message ?? 'No se pudo cargar la factura')
+      toast.error(err.message ?? 'No se pudo cargar el documento')
     } finally {
       setSearching(false)
     }
@@ -358,34 +364,32 @@ export default function ImportInvoicePage() {
         </div>
       </div>
 
-      {/* Tabs Selector — Only visible for invoices */}
-      {docType === 'invoice' && (
-        <div className="flex border-b border-border">
-          <button
-            onClick={() => { setSearchTab('direct'); setPreview(null); setAlreadyExists(false) }}
-            className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-all ${
-              searchTab === 'direct'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Búsqueda Directa
-          </button>
-          <button
-            onClick={() => { setSearchTab('range'); setPreview(null); setAlreadyExists(false) }}
-            className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-all ${
-              searchTab === 'range'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Búsqueda por Rango de Fechas
-          </button>
-        </div>
-      )}
+      {/* Tabs Selector */}
+      <div className="flex border-b border-border">
+        <button
+          onClick={() => { setSearchTab('direct'); setPreview(null); setAlreadyExists(false) }}
+          className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-all ${
+            searchTab === 'direct'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Búsqueda Directa
+        </button>
+        <button
+          onClick={() => { setSearchTab('range'); setPreview(null); setAlreadyExists(false) }}
+          className={`px-5 py-2.5 text-sm font-semibold border-b-2 transition-all ${
+            searchTab === 'range'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Búsqueda por Rango de Fechas
+        </button>
+      </div>
 
       {/* Direct Search Form */}
-      {(searchTab === 'direct' || docType === 'credit-note') && (
+      {searchTab === 'direct' && (
         <div className="bg-card rounded-xl border border-border p-6 shadow-sm">
           <form onSubmit={handleSearch} className="flex gap-3">
             <div className="flex-1 relative">
@@ -425,8 +429,8 @@ export default function ImportInvoicePage() {
         </div>
       )}
 
-      {/* Date Range Search Form — Only visible for invoices */}
-      {searchTab === 'range' && docType === 'invoice' && (
+      {/* Date Range Search Form */}
+      {searchTab === 'range' && (
         <div className="bg-card rounded-xl border border-border p-6 shadow-sm space-y-4">
           <form onSubmit={handleRangeSearch} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -465,7 +469,7 @@ export default function ImportInvoicePage() {
                 className="px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-sm shadow-sm"
               >
                 {loadingRange ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                Buscar Facturas
+                Buscar {docType === 'invoice' ? 'Facturas' : 'Notas de Crédito'}
               </button>
             </div>
           </form>
@@ -473,12 +477,16 @@ export default function ImportInvoicePage() {
       )}
 
       {/* Date Range Search Results */}
-      {searchTab === 'range' && docType === 'invoice' && rangeResults && (
+      {searchTab === 'range' && rangeResults && (
         <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden animate-enter">
           <div className="p-6 border-b border-border bg-accent/20 flex items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-foreground">Facturas Disponibles ({rangeResults.length})</h2>
-              <p className="text-sm text-muted-foreground mt-0.5">Selecciona una factura disponible para ver sus detalles e importarla</p>
+              <h2 className="text-lg font-bold text-foreground">
+                {docType === 'invoice' ? 'Facturas Disponibles' : 'Notas de Crédito Disponibles'} ({rangeResults.length})
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Selecciona un documento disponible para ver sus detalles e importarlo
+              </p>
             </div>
           </div>
           {rangeResults.length === 0 ? (

@@ -7,7 +7,7 @@ import { InvoiceDoc, DeliveryOrderDoc } from '@/types'
 import { formatDate, formatRelative, getOrderStatusVariant, deliveryProgress, toDate } from '@/lib/utils'
 import {
   FileText, Truck, Clock, CheckCircle2, AlertTriangle,
-  Plus, ArrowRight, TrendingUp, Package
+  Plus, ArrowRight, TrendingUp, Package, Calendar
 } from 'lucide-react'
 import { ORDER_STATUS_LABELS, INVOICE_STATUS_LABELS } from '@/types'
 
@@ -74,6 +74,14 @@ export default function DashboardPage() {
   const recentOrders = [...orders]
     .sort((a, b) => toDate(b.createdAt).getTime() - toDate(a.createdAt).getTime())
     .slice(0, 5)
+
+  const scheduledOrders = orders
+    .filter((o) => (o.status === 'pending' || o.status === 'in_transit') && o.scheduledDate)
+    .sort((a, b) => {
+      const dateA = `${a.scheduledDate}T${a.scheduledTime || '00:00'}`
+      const dateB = `${b.scheduledDate}T${b.scheduledTime || '00:00'}`
+      return dateA.localeCompare(dateB)
+    })
 
   if (loading) {
     return (
@@ -178,52 +186,99 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Recent Orders */}
-        <div className="bg-card rounded-xl border border-border shadow-sm">
-          <div className="p-6 pb-4 border-b border-border">
-            <h2 className="text-base font-bold text-foreground">Órdenes Recientes</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Últimas 5 actividades</p>
-          </div>
-          <div className="p-4 space-y-3">
-            {recentOrders.length === 0 ? (
-              <p className="text-muted-foreground text-sm text-center py-8">Sin órdenes aún</p>
-            ) : (
-              recentOrders.map((order) => (
-                <Link
-                  key={order.id}
-                  href={`/delivery-orders/${order.id}`}
-                  className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors group"
-                >
-                  <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                    order.status === 'delivered' ? 'bg-green-500' :
-                    order.status === 'pending' ? 'bg-amber-500' :
-                    order.status === 'in_transit' ? 'bg-blue-500' :
-                    order.status === 'delivered_with_exceptions' ? 'bg-orange-500' :
-                    'bg-red-500'
-                  }`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-foreground truncate">
-                      {order.invoiceReference}
+        {/* Sidebar panels */}
+        <div className="space-y-6">
+          {/* Scheduled Dispatches */}
+          <div className="bg-card rounded-xl border border-border shadow-sm">
+            <div className="p-6 pb-4 border-b border-border">
+              <h2 className="text-base font-bold text-foreground">Despachos Programados</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Próximas entregas planificadas</p>
+            </div>
+            <div className="p-4 space-y-3">
+              {scheduledOrders.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-8">No hay despachos programados</p>
+              ) : (
+                scheduledOrders.slice(0, 5).map((order) => (
+                  <Link
+                    key={order.id}
+                    href={`/delivery-orders/${order.id}`}
+                    className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors group"
+                  >
+                    <div className="w-8 h-8 bg-amber-50 dark:bg-amber-950/20 rounded-lg flex items-center justify-center flex-shrink-0 text-amber-600">
+                      <Calendar className="w-4 h-4" />
                     </div>
-                    <div className="text-xs text-muted-foreground truncate">{order.assignedDriverName}</div>
-                    <div className="text-xs text-muted-foreground/70 mt-0.5">
-                      {formatRelative(order.createdAt)}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-foreground truncate">
+                        {order.clientName}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        Factura: {order.invoiceReference} · Chofer: {order.assignedDriverName}
+                      </div>
+                      <div className="text-xs font-medium text-amber-600 mt-1 flex items-center gap-1">
+                        📅 {order.scheduledDate} {order.scheduledTime ? `a las ${order.scheduledTime}` : ''}
+                      </div>
                     </div>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[order.status] ?? 'bg-muted text-muted-foreground'}`}>
-                    {ORDER_STATUS_LABELS[order.status]}
-                  </span>
-                </Link>
-              ))
-            )}
+                  </Link>
+                ))
+              )}
+            </div>
+            <div className="p-4 border-t border-border">
+              <Link
+                href="/calendar"
+                className="w-full flex items-center justify-center gap-2 text-sm text-primary hover:underline"
+              >
+                Ver calendario de despachos <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
           </div>
-          <div className="p-4 border-t border-border">
-            <Link
-              href="/delivery-orders"
-              className="w-full flex items-center justify-center gap-2 text-sm text-primary hover:underline"
-            >
-              Ver todas las órdenes <ArrowRight className="w-3 h-3" />
-            </Link>
+
+          {/* Recent Orders */}
+          <div className="bg-card rounded-xl border border-border shadow-sm">
+            <div className="p-6 pb-4 border-b border-border">
+              <h2 className="text-base font-bold text-foreground">Órdenes Recientes</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Últimas 5 actividades</p>
+            </div>
+            <div className="p-4 space-y-3">
+              {recentOrders.length === 0 ? (
+                <p className="text-muted-foreground text-sm text-center py-8">Sin órdenes aún</p>
+              ) : (
+                recentOrders.map((order) => (
+                  <Link
+                    key={order.id}
+                    href={`/delivery-orders/${order.id}`}
+                    className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors group"
+                  >
+                    <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
+                      order.status === 'delivered' ? 'bg-green-500' :
+                      order.status === 'pending' ? 'bg-amber-500' :
+                      order.status === 'in_transit' ? 'bg-blue-500' :
+                      order.status === 'delivered_with_exceptions' ? 'bg-orange-500' :
+                      'bg-red-500'
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-foreground truncate">
+                        {order.invoiceReference}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">{order.assignedDriverName}</div>
+                      <div className="text-xs text-muted-foreground/70 mt-0.5">
+                        {formatRelative(order.createdAt)}
+                      </div>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[order.status] ?? 'bg-muted text-muted-foreground'}`}>
+                      {ORDER_STATUS_LABELS[order.status]}
+                    </span>
+                  </Link>
+                ))
+              )}
+            </div>
+            <div className="p-4 border-t border-border">
+              <Link
+                href="/delivery-orders"
+                className="w-full flex items-center justify-center gap-2 text-sm text-primary hover:underline"
+              >
+                Ver todas las órdenes <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
           </div>
         </div>
       </div>

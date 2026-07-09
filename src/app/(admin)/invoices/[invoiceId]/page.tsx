@@ -4,8 +4,11 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
-  getInvoiceById, getInvoiceItems, getOrdersByInvoice, subscribeToInvoiceItems
+  getInvoiceById, getInvoiceItems, getOrdersByInvoice, subscribeToInvoiceItems,
+  closeOrCancelInvoice, updateInvoiceNotes
 } from '@/lib/firebase/firestore'
+import { useAuth } from '@/contexts/AuthContext'
+import { toast } from 'sonner'
 import { InvoiceDoc, InvoiceItemDoc, DeliveryOrderDoc, INVOICE_STATUS_LABELS, ORDER_STATUS_LABELS } from '@/types'
 import { formatDate, formatDateTime, formatNumber, deliveryProgress } from '@/lib/utils'
 import {
@@ -26,11 +29,50 @@ function ProgressBar({ value }: { value: number }) {
 
 export default function InvoiceDetailPage() {
   const { invoiceId } = useParams<{ invoiceId: string }>()
+  const { firebaseUser } = useAuth()
   const [invoice, setInvoice] = useState<InvoiceDoc | null>(null)
   const [items, setItems] = useState<InvoiceItemDoc[]>([])
   const [orders, setOrders] = useState<DeliveryOrderDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
+
+  async function handleCloseOrCancelInvoice(status: 'completed' | 'cancelled') {
+    const text = status === 'completed' ? 'cerrar con saldo' : 'cancelar'
+    const reason = prompt(`Indique el motivo para ${text} la factura:`)
+    if (reason === null) return
+    if (!reason.trim()) {
+      toast.error('Debe indicar un motivo.')
+      return
+    }
+    try {
+      await closeOrCancelInvoice(invoiceId, status, reason.trim(), firebaseUser?.uid ?? 'system')
+      toast.success(`Factura ${status === 'completed' ? 'cerrada' : 'cancelada'} exitosamente.`)
+      const inv = await getInvoiceById(invoiceId)
+      setInvoice(inv)
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al actualizar el estado de la factura')
+    }
+  }
+
+  async function handleEditNotes() {
+    const newNote = prompt('Ingrese el nuevo comentario de la factura:', invoice?.notes || '')
+    if (newNote === null) return
+    if (newNote.trim() === (invoice?.notes || '')) return
+    try {
+      await updateInvoiceNotes(
+        invoiceId,
+        newNote.trim(),
+        firebaseUser?.uid ?? 'system',
+        firebaseUser?.displayName || 'Administrador',
+        invoice?.notes || ''
+      )
+      toast.success('Nota de factura actualizada con éxito.')
+      const inv = await getInvoiceById(invoiceId)
+      setInvoice(inv)
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al actualizar la nota')
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -112,24 +154,86 @@ export default function InvoiceDetailPage() {
                 <p className="text-sm text-muted-foreground mt-0.5">📍 {invoice.deliveryAddress}</p>
               )}
               <p className="text-xs text-muted-foreground mt-1">Emitida: {formatDate(invoice.issueDate)}</p>
-              {invoice.notes && (
-                <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 max-w-xl">
-                  <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Nota del Vendedor / Importación</p>
-                  <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">{invoice.notes}</p>
+              {invoice.notes !== undefined && (
+                <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 max-w-xl relative group">
+                  <div className="flex justify-between items-start">
+                    <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Nota del Vendedor / Importación</p>
+                    <button
+                      onClick={handleEditNotes}
+                      className="text-xs text-blue-600 hover:text-blue-800 underline opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      Editar
+                    </button>
+                  </div>
+                  <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">{invoice.notes || '(Sin comentarios)'}</p>
+                  
+                  {invoice.notesHistory && invoice.notesHistory.length > 0 && (
+                    <div className="mt-2.5 pt-2.5 border-t border-blue-200/50">
+                      <details className="text-[11px] text-blue-800 dark:text-blue-400 cursor-pointer">
+                        <summary className="font-semibold hover:underline">Ver historial de cambios ({invoice.notesHistory.length})</summary>
+                        <div className="space-y-2 mt-2 max-h-32 overflow-y-auto pr-1">
+                          {invoice.notesHistory.map((h, index) => (
+                            <div key={index} className="bg-blue-100/50 dark:bg-blue-950/20 p-2 rounded text-[10px]">
+                              <div className="font-semibold flex justify-between">
+                                <span>Modificado por {h.updatedByName}</span>
+                                <span>{formatDateTime(h.updatedAt)}</span>
+                              </div>
+                              <div className="mt-1 line-through text-muted-foreground">Anterior: {h.previousNote || '—'}</div>
+                              <div className="mt-0.5 font-medium">Nueva: {h.note}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {invoice.status === 'completed' && invoice.closeReason && (
+                <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 max-w-xl">
+                  <p className="text-xs font-semibold text-amber-850 dark:text-amber-300">Cerrada Manualmente con Saldo Pendiente</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5"><span className="font-semibold">Motivo:</span> {invoice.closeReason}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">Cerrada por: {invoice.closedBy || 'Administrador'}</p>
+                </div>
+              )}
+
+              {invoice.status === 'cancelled' && invoice.closeReason && (
+                <div className="mt-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 max-w-xl">
+                  <p className="text-xs font-semibold text-red-850 dark:text-red-300">Factura Cancelada</p>
+                  <p className="text-sm text-red-700 dark:text-red-400 mt-0.5"><span className="font-semibold">Motivo:</span> {invoice.closeReason}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">Cancelada por: {invoice.closedBy || 'Administrador'}</p>
                 </div>
               )}
             </div>
           </div>
-          {canDispatch && (
-            <Link
-              href={`/invoices/${invoiceId}/dispatch`}
-              id="btn-create-dispatch"
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors shadow-md text-sm whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4" />
-              Crear Despacho
-            </Link>
-          )}
+          <div className="flex gap-2 flex-wrap items-start">
+            {canDispatch && (
+              <Link
+                href={`/invoices/${invoiceId}/dispatch`}
+                id="btn-create-dispatch"
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold rounded-lg hover:bg-primary/90 transition-colors shadow-md text-sm whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" />
+                Crear Despacho
+              </Link>
+            )}
+            {(invoice.status === 'open' || invoice.status === 'in_progress') && (
+              <>
+                <button
+                  onClick={() => handleCloseOrCancelInvoice('completed')}
+                  className="px-4 py-2.5 bg-background border border-border text-foreground hover:bg-muted text-sm font-semibold rounded-lg transition-all"
+                >
+                  Cerrar con Saldo
+                </button>
+                <button
+                  onClick={() => handleCloseOrCancelInvoice('cancelled')}
+                  className="px-4 py-2.5 bg-background border border-red-200 text-red-650 hover:bg-red-50/50 text-sm font-semibold rounded-lg transition-all"
+                >
+                  Cancelar Factura
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Progress summary */}
@@ -296,6 +400,49 @@ export default function InvoiceDetailPage() {
                     </Link>
                   </div>
                 )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Credit notes history */}
+      {invoice.creditNotes && invoice.creditNotes.length > 0 && (
+        <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-border">
+            <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+              <FileText className="w-4 h-4 text-red-500" />
+              Notas de Crédito Aplicadas ({invoice.creditNotes.length})
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Historial de rebajas de saldos por créditos</p>
+          </div>
+          <div className="divide-y divide-border">
+            {invoice.creditNotes.map((cn, i) => (
+              <div key={i} className="p-6 space-y-3">
+                <div className="flex justify-between items-start flex-wrap gap-2 text-sm font-semibold">
+                  <div className="text-foreground font-mono">Referencia: {cn.reference}</div>
+                  <div className="text-muted-foreground text-xs font-normal">
+                    Aplicada: {formatDateTime(cn.importedAt)}
+                  </div>
+                </div>
+                <div className="bg-muted/30 rounded-lg p-3">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-left">
+                        <th className="pb-1 font-semibold text-muted-foreground">SKU</th>
+                        <th className="pb-1 text-right font-semibold text-muted-foreground">Cantidad Acreditada</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cn.items.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-muted/10">
+                          <td className="py-1 font-mono text-muted-foreground">{item.sku}</td>
+                          <td className="py-1 text-right font-semibold text-red-650 font-bold">-{formatNumber(item.quantity)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ))}
           </div>

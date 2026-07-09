@@ -9,7 +9,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
   fetchAndTransformInvoice,
+  fetchCreditNoteByReference,
   FinanzaProError,
+  COMPANIES,
 } from '@/lib/finanzapro/client'
 
 export async function GET(request: NextRequest) {
@@ -17,6 +19,7 @@ export async function GET(request: NextRequest) {
   const reference = searchParams.get('reference')
   const id = searchParams.get('id')
   const companyId = searchParams.get('companyId') || 'mercado_popular'
+  const type = searchParams.get('type')
 
   if (!reference && !id) {
     return NextResponse.json(
@@ -25,11 +28,26 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // UID del admin — en producción validar con Firebase Admin SDK
-  // Por ahora se pasa como header desde el cliente (añadir Auth middleware)
   const importedBy = request.headers.get('x-user-uid') ?? 'system'
 
   try {
+    if (type === 'credit-note') {
+      if (!reference) {
+        return NextResponse.json(
+          { error: 'Se requiere el parámetro "reference" para buscar una nota de crédito' },
+          { status: 400 }
+        )
+      }
+      const company = COMPANIES.find((c) => c.id === companyId) || COMPANIES[0]
+      const raw = await fetchCreditNoteByReference(reference, company.apiKey)
+      return NextResponse.json({
+        success: true,
+        data: {
+          raw,
+        },
+      })
+    }
+
     const result = await fetchAndTransformInvoice(
       (reference ?? id)!,
       importedBy,

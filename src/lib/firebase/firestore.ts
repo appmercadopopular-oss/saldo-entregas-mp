@@ -126,7 +126,9 @@ export async function getInvoiceByReference(
  */
 export async function saveImportedInvoice(
   invoice: Omit<InvoiceDoc, 'id'>,
-  items: Omit<InvoiceItemDoc, 'id'>[]
+  items: Omit<InvoiceItemDoc, 'id'>[],
+  immediateDeliveries?: Array<{ sku: string; quantity: number; description: string; unit: string }>,
+  adminUser?: { uid: string; displayName: string }
 ): Promise<string> {
   // Obtener la siguiente prioridad disponible
   let nextPriority = 1
@@ -147,16 +149,84 @@ export async function saveImportedInvoice(
     console.error('Error fetching max priority for invoice:', error)
   }
 
-  // 1. Crear el documento de la factura
-  const invoiceDocRef = await addDoc(invoicesRef(), { ...invoice, priority: nextPriority })
+  // 1. Process items with immediate deliveries if present
+  let hasImmediate = false
+  const processedItems = items.map(item => {
+    const immediate = immediateDeliveries?.find(i => i.sku === item.sku)
+    if (immediate && immediate.quantity > 0) {
+      hasImmediate = true
+      const qtyDelivered = Math.round(immediate.quantity * 100) / 100
+      const qtyPending = Math.max(0, Math.round((item.quantityInvoiced - qtyDelivered) * 100) / 100)
+      return {
+        ...item,
+        quantityDelivered: qtyDelivered,
+        quantityPending: qtyPending,
+        isCompleted: qtyPending <= 0
+      }
+    }
+    return item
+  })
+
+  // Check if invoice itself is fully delivered immediately
+  const isFullyDelivered = processedItems.every(i => i.isCompleted)
+  const finalStatus: InvoiceStatus = isFullyDelivered ? 'completed' : (hasImmediate ? 'in_progress' : 'open')
+
+  // 2. Crear el documento de la factura
+  const invoiceDocRef = await addDoc(invoicesRef(), { 
+    ...invoice, 
+    priority: nextPriority,
+    isFullyDelivered,
+    status: finalStatus
+  })
   const invoiceId = invoiceDocRef.id
 
-  // 2. Crear todos los ítems en un batch
+  // 3. Crear todos los ítems en un batch/transacción
   const batch = writeBatch(db)
-  for (const item of items) {
+  
+  // Track assigned item IDs for the immediate delivery order
+  const savedItemIds: Record<string, string> = {}
+
+  for (const item of processedItems) {
     const itemRef = doc(invoiceItemsRef(invoiceId))
     batch.set(itemRef, item)
+    savedItemIds[item.sku] = itemRef.id
   }
+
+  // 4. Si hay entregas inmediatas, crear un despacho completado automáticamente
+  if (hasImmediate && immediateDeliveries) {
+    const orderItems: DeliveryOrderItem[] = immediateDeliveries
+      .filter(d => d.quantity > 0)
+      .map(d => ({
+        invoiceItemId: savedItemIds[d.sku] ?? '',
+        sku: d.sku,
+        description: d.description,
+        unit: d.unit,
+        quantityDispatched: d.quantity,
+        quantityConfirmed: d.quantity,
+        quantityReturned: 0,
+        hasException: false
+      }))
+
+    const orderRef = doc(deliveryOrdersRef())
+    const newOrder: Omit<DeliveryOrderDoc, 'id'> = {
+      invoiceId,
+      invoiceReference: invoice.internalReference,
+      clientName: invoice.clientName,
+      deliveryAddress: invoice.deliveryAddress,
+      assignedDriverId: 'immediate_pickup',
+      assignedDriverName: 'Retirado en Tienda (Entrega Inmediata)',
+      createdBy: adminUser?.uid ?? 'system',
+      createdByName: adminUser?.displayName ?? 'System',
+      createdAt: Timestamp.now(),
+      deliveredAt: Timestamp.now(),
+      status: 'delivered',
+      items: orderItems,
+      adminNotes: 'Entregado físicamente al cliente en la tienda al momento de la compra.',
+      priority: 999
+    }
+    batch.set(orderRef, newOrder)
+  }
+
   await batch.commit()
 
   return invoiceId
@@ -216,6 +286,23 @@ export async function createDeliveryOrder(
 ): Promise<string> {
   let newOrderId = ''
 
+  // 0. Consultar despachos activos para esta factura antes de la transacción (para sumar asignados)
+  const qActive = query(
+    deliveryOrdersRef(),
+    where('invoiceId', '==', payload.invoiceId),
+    where('status', 'in', ['pending', 'in_transit'])
+  )
+  const snapActive = await getDocs(qActive)
+  const activeOrders = snapActive.docs.map(doc => doc.data() as DeliveryOrderDoc)
+
+  const allocatedMap = new Map<string, number>()
+  for (const order of activeOrders) {
+    for (const item of order.items) {
+      const current = allocatedMap.get(item.invoiceItemId) || 0
+      allocatedMap.set(item.invoiceItemId, current + item.quantityDispatched)
+    }
+  }
+
   // Obtener la siguiente prioridad disponible para el despacho
   let nextPriority = 1
   try {
@@ -265,11 +352,13 @@ export async function createDeliveryOrder(
       const requested = payload.items[i].quantityDispatched
 
       const roundedRequested = Math.round(requested * 100) / 100
-      const roundedPending = Math.round(itemData.quantityPending * 100) / 100
+      const allocated = allocatedMap.get(payload.items[i].invoiceItemId) || 0
+      const available = Math.max(0, itemData.quantityPending - allocated)
+      const roundedAvailable = Math.round(available * 100) / 100
 
-      if (roundedRequested > roundedPending) {
+      if (roundedRequested > roundedAvailable) {
         throw new Error(
-          `Cantidad solicitada (${requested}) supera el saldo pendiente (${itemData.quantityPending}) para: ${itemData.description}`
+          `Cantidad solicitada (${requested}) supera el saldo disponible para despacho (${available}) para: ${itemData.description} (Asignado en otras rutas: ${allocated})`
         )
       }
     }
@@ -281,7 +370,7 @@ export async function createDeliveryOrder(
       description: item.description,
       unit: item.unit,
       quantityDispatched: item.quantityDispatched,
-      quantityConfirmed: item.quantityDispatched, // Optimista: se ajusta al confirmar
+      quantityConfirmed: item.quantityDispatched,
       quantityReturned: 0,
       hasException: false,
     }))
@@ -653,6 +742,116 @@ export async function updateDeliveryOrderScheduledDateTime(
   await updateDoc(orderRef, {
     scheduledDate: scheduledDate || null,
     scheduledTime: scheduledTime || null,
+  })
+}
+
+/**
+ * Cierra o cancela una factura con saldo pendiente, registrando un motivo.
+ */
+export async function closeOrCancelInvoice(
+  invoiceId: string,
+  status: 'completed' | 'cancelled',
+  reason: string,
+  userUid: string
+): Promise<void> {
+  await updateDoc(doc(db, 'invoices', invoiceId), {
+    status,
+    closeReason: reason,
+    closedAt: Timestamp.now(),
+    closedBy: userUid
+  })
+}
+
+/**
+ * Edita la nota de una factura y guarda el registro en notesHistory para auditoría.
+ */
+export async function updateInvoiceNotes(
+  invoiceId: string,
+  newNote: string,
+  userUid: string,
+  userName: string,
+  previousNote: string
+): Promise<void> {
+  const invoiceRef = doc(db, 'invoices', invoiceId)
+  const historyEntry = {
+    note: newNote,
+    previousNote,
+    updatedAt: Timestamp.now(),
+    updatedBy: userUid,
+    updatedByName: userName
+  }
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(invoiceRef)
+    if (!snap.exists()) throw new Error('Factura no encontrada')
+    const data = snap.data()
+    const history = data.notesHistory || []
+    tx.update(invoiceRef, {
+      notes: newNote,
+      notesHistory: [...history, historyEntry]
+    })
+  })
+}
+
+/**
+ * Aplica una nota de crédito a una factura en Firestore, reduciendo los saldos pendientes.
+ */
+export async function applyCreditNoteToInvoice(
+  invoiceId: string,
+  creditNoteRef: string,
+  creditNoteItems: Array<{ sku: string; quantity: number }>,
+  userUid: string
+): Promise<void> {
+  const invoiceRef = doc(db, 'invoices', invoiceId)
+  const itemsCollectionRef = invoiceItemsRef(invoiceId)
+  
+  const itemsSnap = await getDocs(itemsCollectionRef)
+  const dbItems = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }) as InvoiceItemDoc)
+
+  await runTransaction(db, async (tx) => {
+    const invoiceSnap = await tx.get(invoiceRef)
+    if (!invoiceSnap.exists()) throw new Error('Factura no encontrada')
+    
+    const invoiceData = invoiceSnap.get('creditNotes') || []
+    
+    const alreadyApplied = invoiceData.some((cn: any) => cn.reference === creditNoteRef)
+    if (alreadyApplied) {
+      throw new Error(`La nota de crédito ${creditNoteRef} ya fue aplicada a esta factura.`)
+    }
+
+    let allCompleted = true
+
+    for (const dbItem of dbItems) {
+      const cnLine = creditNoteItems.find(cn => cn.sku === dbItem.sku)
+      let newPending = dbItem.quantityPending
+      
+      if (cnLine && cnLine.quantity > 0) {
+        newPending = Math.max(0, Math.round((dbItem.quantityPending - cnLine.quantity) * 100) / 100)
+      }
+      
+      const isCompleted = newPending <= 0
+      if (!isCompleted) {
+        allCompleted = false
+      }
+
+      const itemDocRef = doc(db, 'invoices', invoiceId, 'items', dbItem.id)
+      tx.update(itemDocRef, {
+        quantityPending: newPending,
+        isCompleted
+      })
+    }
+
+    const newCreditNoteLog = {
+      reference: creditNoteRef,
+      importedAt: Timestamp.now(),
+      importedBy: userUid,
+      items: creditNoteItems
+    }
+
+    tx.update(invoiceRef, {
+      creditNotes: [...invoiceData, newCreditNoteLog],
+      isFullyDelivered: allCompleted,
+      status: allCompleted ? ('completed' as InvoiceStatus) : ('in_progress' as InvoiceStatus)
+    })
   })
 }
 

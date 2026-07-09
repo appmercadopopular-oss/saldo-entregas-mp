@@ -345,3 +345,78 @@ export async function fetchAndTransformInvoice(
 
   return { raw, invoice, items }
 }
+
+/**
+ * Busca una nota de crédito en FinanzaPro por referencia.
+ * Intenta buscar en el endpoint de credit-notes y si falla o no encuentra,
+ * busca en el de invoices (ya que a veces se catalogan juntas).
+ */
+export async function fetchCreditNoteByReference(
+  reference: string,
+  apiKey: string
+): Promise<any> {
+  const refClean = reference.trim()
+  const endpoints = [
+    `/invoicing-service/v2/credit-notes`,
+    `/invoicing-service/v2/invoices`
+  ]
+  const possibleParams = ['internalReference', 'reference', 'number', 'invoiceNumber', 'q', 'search']
+
+  for (const endpoint of endpoints) {
+    for (const paramName of possibleParams) {
+      try {
+        console.log(`[FinanzaPro Client CreditNote] Probing ${endpoint} with parameter '${paramName}' = '${refClean}'...`)
+        const response = await finanzaProFetch<any>(
+          `${endpoint}?${paramName}=${encodeURIComponent(refClean)}&limit=5`,
+          apiKey
+        )
+
+        let items: any[] = []
+        if (response) {
+          if (response.data !== undefined) {
+            items = response.data.items || response.data
+          } else if (response.items !== undefined) {
+            items = response.items
+          } else if (Array.isArray(response)) {
+            items = response
+          } else {
+            items = [response]
+          }
+        }
+
+        if (items && Array.isArray(items)) {
+          const match = items.find(
+            (inv: any) =>
+              inv &&
+              (String(inv.internalReference || '').trim() === refClean ||
+               String(inv.number || '').trim() === refClean ||
+               String(inv.id || '').trim() === refClean)
+          )
+
+          if (match) {
+            console.log(`[FinanzaPro Client CreditNote] Match found in ${endpoint} using param '${paramName}'!`)
+            if (match.id) {
+              try {
+                const docDetails = await finanzaProFetch<any>(
+                  `${endpoint}/${encodeURIComponent(match.id)}`,
+                  apiKey
+                )
+                return docDetails.data || docDetails
+              } catch {
+                return match
+              }
+            }
+            return match
+          }
+        }
+      } catch (err) {
+        console.warn(`[FinanzaPro Client CreditNote] Probe failed:`, err)
+      }
+    }
+  }
+
+  throw new FinanzaProError(
+    `No se encontró ninguna nota de crédito con referencia: ${reference}`,
+    404
+  )
+}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { getInvoiceById, getInvoiceItems, getActiveDrivers, createDeliveryOrder } from '@/lib/firebase/firestore'
+import { getInvoiceById, getInvoiceItems, getActiveDrivers, createDeliveryOrder, getOrdersByInvoice } from '@/lib/firebase/firestore'
 import { useAuth } from '@/contexts/AuthContext'
 import { InvoiceDoc, InvoiceItemDoc, UserDoc } from '@/types'
 import { formatNumber, validateDispatchQuantity } from '@/lib/utils'
@@ -16,6 +16,8 @@ type DispatchItem = {
   selected: boolean
   quantity: string
   error?: string
+  allocated: number
+  available: number
 }
 
 export default function DispatchPage() {
@@ -64,17 +66,36 @@ export default function DispatchPage() {
 
   useEffect(() => {
     async function load() {
-      const [inv, invItems, driverList] = await Promise.all([
+      const [inv, invItems, driverList, invoiceOrders] = await Promise.all([
         getInvoiceById(invoiceId),
         getInvoiceItems(invoiceId),
         getActiveDrivers(),
+        getOrdersByInvoice(invoiceId),
       ])
       setInvoice(inv)
       setDeliveryAddress(inv?.deliveryAddress ?? '')
+
+      const activeOrders = invoiceOrders.filter(
+        (o) => o.status === 'pending' || o.status === 'in_transit'
+      )
+
       setDispatchItems(
         invItems
           .filter((i) => i.quantityPending > 0)
-          .map((i) => ({ invoiceItem: i, selected: false, quantity: i.quantityPending.toString() }))
+          .map((i) => {
+            const allocated = activeOrders.reduce((sum, order) => {
+              const line = order.items.find((l) => l.invoiceItemId === i.id)
+              return sum + (line ? line.quantityDispatched : 0)
+            }, 0)
+            const available = Math.max(0, i.quantityPending - allocated)
+            return {
+              invoiceItem: i,
+              selected: false,
+              quantity: available.toString(),
+              allocated,
+              available,
+            }
+          })
       )
       setDrivers(driverList)
       setLoading(false)
@@ -93,17 +114,18 @@ export default function DispatchPage() {
       prev.map((d) => {
         if (d.invoiceItem.id !== id) return d
         const numVal = val === '' ? 0 : Number(val)
-        const { valid, error } = validateDispatchQuantity(numVal, d.invoiceItem.quantityPending)
+        const { valid, error } = validateDispatchQuantity(numVal, d.available)
         return { ...d, quantity: val, error: valid ? undefined : error }
       })
     )
   }
 
+  // Adjust quantity
   function adjustQty(id: string, delta: number) {
     const item = dispatchItems.find((d) => d.invoiceItem.id === id)
     if (!item) return
     const numQty = item.quantity === '' ? 0 : Number(item.quantity)
-    const newVal = Math.max(0, Math.min(item.invoiceItem.quantityPending, numQty + delta))
+    const newVal = Math.max(0, Math.min(item.available, numQty + delta))
     setQty(id, newVal.toString())
   }
 
@@ -337,6 +359,14 @@ export default function DispatchPage() {
                     <div className="text-xs text-amber-600 mt-0.5">
                       Saldo pendiente: <strong>{formatNumber(d.invoiceItem.quantityPending)}</strong>
                     </div>
+                    {d.allocated > 0 && (
+                      <div className="text-xs text-blue-500 mt-0.5">
+                        Asignado a Ruta (Activo): <strong>{formatNumber(d.allocated)}</strong>
+                      </div>
+                    )}
+                    <div className="text-xs text-green-600 mt-0.5">
+                      Disponible para Despacho: <strong>{formatNumber(d.available)}</strong>
+                    </div>
                   </div>
                   {d.selected && (
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -350,7 +380,7 @@ export default function DispatchPage() {
                         onChange={(e) => setQty(d.invoiceItem.id, e.target.value)}
                         min={0.01}
                         step="0.01"
-                        max={d.invoiceItem.quantityPending}
+                        max={d.available}
                         className={`w-20 text-center py-1.5 rounded-lg border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all ${
                           d.error ? 'border-red-400 bg-red-50 dark:bg-red-900/20' : 'border-border bg-background'
                         }`}

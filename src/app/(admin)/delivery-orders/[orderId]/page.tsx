@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase/config'
-import { cancelDeliveryOrder, getActiveDrivers, reassignDeliveryOrderDriver, updateDeliveryOrderScheduledDateTime } from '@/lib/firebase/firestore'
-import { DeliveryOrderDoc, UserDoc, ORDER_STATUS_LABELS } from '@/types'
+import { cancelDeliveryOrder, getActiveDrivers, reassignDeliveryOrderDriver, updateDeliveryOrderScheduledDateTime, getInvoiceItems } from '@/lib/firebase/firestore'
+import { DeliveryOrderDoc, UserDoc, ORDER_STATUS_LABELS, InvoiceItemDoc } from '@/types'
 import { formatDateTime, formatNumber } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
@@ -30,6 +30,7 @@ export default function AdminOrderDetailPage() {
   const [cancelling, setCancelling] = useState(false)
   const [drivers, setDrivers] = useState<UserDoc[]>([])
   const [reassigning, setReassigning] = useState(false)
+  const [invoiceItems, setInvoiceItems] = useState<InvoiceItemDoc[]>([])
 
   // Schedule edit states
   const [isEditingSchedule, setIsEditingSchedule] = useState(false)
@@ -41,6 +42,12 @@ export default function AdminOrderDetailPage() {
     if (order) {
       setEditDate(order.scheduledDate || '')
       setEditTime(order.scheduledTime || '')
+    }
+  }, [order])
+
+  useEffect(() => {
+    if (order && order.invoiceId) {
+      getInvoiceItems(order.invoiceId).then(setInvoiceItems)
     }
   }, [order])
 
@@ -624,6 +631,51 @@ export default function AdminOrderDetailPage() {
             {order.assignedDriverName}
           </div>
         </div>
+      </div>
+
+      {/* Printable Remaining Balance Box (Print Only) */}
+      <div className="print-only-layout mt-6 border border-gray-300 rounded overflow-hidden">
+        <div className="bg-gray-150 p-2 font-bold text-[9px] uppercase border-b border-gray-300 text-black">
+          Saldo Pendiente por Despachar (Después de esta entrega)
+        </div>
+        <table className="w-full text-left border-collapse text-[9px]">
+          <thead>
+            <tr className="bg-gray-50 border-b border-gray-300 font-bold text-gray-700">
+              <th className="py-1 px-2 border-r border-gray-300">Artículo</th>
+              <th className="py-1 px-2 text-right border-r border-gray-300 w-24">Saldo de Factura</th>
+              <th className="py-1 px-2 text-right border-r border-gray-300 w-24">Este Despacho</th>
+              <th className="py-1 px-2 text-right w-24">Saldo Pendiente Restante</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-300 text-black">
+            {order.items.map((item, index) => {
+              const invItem = invoiceItems.find((ii) => ii.id === item.invoiceItemId || ii.sku === item.sku)
+              const totalPendingInInvoice = invItem ? invItem.quantityPending : 0
+              const isActive = order.status === 'pending' || order.status === 'in_transit'
+              const remaining = isActive
+                ? Math.max(0, totalPendingInInvoice - item.quantityDispatched)
+                : totalPendingInInvoice
+
+              return (
+                <tr key={index}>
+                  <td className="py-1 px-2 border-r border-gray-300 font-semibold leading-tight">
+                    {item.description}
+                    <div className="text-[7px] text-gray-500 font-mono mt-0.5">{item.sku}</div>
+                  </td>
+                  <td className="py-1 px-2 text-right border-r border-gray-300 text-gray-600">
+                    {formatNumber(totalPendingInInvoice)}
+                  </td>
+                  <td className="py-1 px-2 text-right font-medium border-r border-gray-300">
+                    {formatNumber(item.quantityDispatched)}
+                  </td>
+                  <td className="py-1 px-2 text-right font-bold bg-gray-50/20">
+                    {formatNumber(remaining)}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Invoiced relation bar screen-only */}

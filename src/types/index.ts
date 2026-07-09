@@ -62,6 +62,27 @@ export interface InvoiceDoc {
   priority?: number
   /** Nombre de la empresa asociada a la factura */
   companyName?: string
+  /** Motivo de cierre manual con saldo o cancelación */
+  closeReason?: string
+  /** Fecha de cierre manual */
+  closedAt?: Timestamp
+  /** UID del administrador que cerró la factura */
+  closedBy?: string
+  /** Historial de auditoría para cambios en las notas */
+  notesHistory?: Array<{
+    note: string
+    previousNote: string
+    updatedAt: Timestamp
+    updatedBy: string
+    updatedByName: string
+  }>
+  /** Notas de crédito aplicadas a la factura */
+  creditNotes?: Array<{
+    reference: string
+    importedAt: Timestamp
+    importedBy: string
+    items: Array<{ sku: string; quantity: number }>
+  }>
 }
 
 // -------------------------------------------------------------

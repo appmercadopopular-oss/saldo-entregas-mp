@@ -312,10 +312,13 @@ export async function createDeliveryOrder(
       const data = snap.docs[0].data() as DeliveryOrderDoc
       nextPriority = (data.priority ?? 0) + 1
     } else {
-      const allQuery = query(deliveryOrdersRef(), orderBy('createdAt', 'desc'))
-      const allSnap = await getDocs(allQuery)
-      if (!allSnap.empty) {
-        nextPriority = allSnap.size + 1
+      const lastQuery = query(deliveryOrdersRef(), orderBy('createdAt', 'desc'), limit(1))
+      const lastSnap = await getDocs(lastQuery)
+      if (!lastSnap.empty) {
+        const lastDoc = lastSnap.docs[0].data() as DeliveryOrderDoc
+        nextPriority = (lastDoc.priority ?? 0) + 1
+      } else {
+        nextPriority = 1
       }
     }
   } catch (error) {
